@@ -1,0 +1,11 @@
+langgraph
+langchain
+langchain-core
+langchain-ollama
+langchain_community
+fastapi
+uvicorn[standard]
+requests
+chromadb
+python-dotenv
+python-multipart

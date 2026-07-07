@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Project Secretary</title>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      color: #1a1a1a;
+    }
+
+    /* ---- Top bar ---- */
+    #topbar {
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    #topbar h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      flex: 1;
+      white-space: nowrap;
+    }
+
+    #topbar select,
+    #topbar button,
+    #topbar input[type="file"] {
+      font-size: 0.85rem;
+      border-radius: 6px;
+      border: none;
+      padding: 0.45rem 0.9rem;
+      cursor: pointer;
+    }
+
+    #project-select {
+      background: #334155;
+      color: #f8fafc;
+      min-width: 160px;
+    }
+
+    #btn-new-project {
+      background: #3b82f6;
+      color: #fff;
+    }
+
+    #btn-new-project:hover {
+      background: #2563eb;
+    }
+
+    #btn-import {
+      background: #10b981;
+      color: #fff;
+    }
+
+    #btn-import:hover {
+      background: #059669;
+    }
+
+    /* ---- Chat area ---- */
+    #chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .bubble {
+      max-width: 72%;
+      padding: 0.65rem 1rem;
+      border-radius: 12px;
+      line-height: 1.5;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .bubble.user {
+      align-self: flex-end;
+      background: #3b82f6;
+      color: #fff;
+      border-bottom-right-radius: 2px;
+    }
+
+    .bubble.secretary {
+      align-self: flex-start;
+      background: #fff;
+      color: #1a1a1a;
+      border-bottom-left-radius: 2px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .bubble.thinking {
+      opacity: 0.6;
+      font-style: italic;
+    }
+
+    /* ---- Input bar ---- */
+    #input-bar {
+      background: #fff;
+      border-top: 1px solid #e2e8f0;
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      gap: 0.65rem;
+      align-items: flex-end;
+      flex-shrink: 0;
+    }
+
+    #msg-input {
+      flex: 1;
+      resize: none;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0.6rem 0.85rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+
+    #msg-input:focus {
+      outline: 2px solid #3b82f6;
+      border-color: transparent;
+    }
+
+    #btn-send {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    #btn-send:hover {
+      background: #2563eb;
+    }
+
+    #btn-send:disabled {
+      background: #93c5fd;
+      cursor: default;
+    }
+
+    /* ---- Toast ---- */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 0.6rem 1.4rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+      z-index: 100;
+    }
+
+    #toast.show {
+      opacity: 1;
+    }
+
+    /* ---- Modal ---- */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 360px;
+      max-width: 95vw;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .modal h2 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .modal input,
+    .modal textarea {
+      width: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      border: none;
+      border-radius: 6px;
+      padding: 0.45rem 1rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    #modal-cancel {
+      background: #e2e8f0;
+      color: #1a1a1a;
+    }
+
+    #modal-create {
+      background: #3b82f6;
+      color: #fff;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <h1>Project Secretary</h1>
+    <select id="project-select">
+      <option value="">— select project —</option>
+    </select>
+    <button id="btn-new-project">+ New Project</button>
+    <button id="btn-import">⬆ Import JSON</button>
+  </div>
+
+  <!-- Chat area -->
+  <div id="chat-area"></div>
+
+  <!-- Input bar -->
+  <div id="input-bar">
+    <textarea id="msg-input" rows="1" placeholder="Type a progress report or ask a question…"></textarea>
+    <button id="btn-send">Send</button>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- New Project Modal -->
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal">
+      <h2>New Project</h2>
+      <input id="modal-name" type="text" placeholder="Project name" />
+      <textarea id="modal-desc" rows="2" placeholder="Description (optional)"></textarea>
+      <div class="modal-actions">
+        <button id="modal-cancel">Cancel</button>
+        <button id="modal-create">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input for JSON import -->
+  <input type="file" id="file-input" accept=".json" style="display:none" />
+
+  <script>
+    const chatArea = document.getElementById('chat-area');
+    const msgInput = document.getElementById('msg-input');
+    const btnSend = document.getElementById('btn-send');
+    const projectSelect = document.getElementById('project-select');
+    const btnNew = document.getElementById('btn-new-project');
+    const btnImport = document.getElementById('btn-import');
+    const toast = document.getElementById('toast');
+    const modalBackdrop = document.getElementById('modal-backdrop');
+    const modalCancel = document.getElementById('modal-cancel');
+    const modalCreate = document.getElementById('modal-create');
+    const modalName = document.getElementById('modal-name');
+    const modalDesc = document.getElementById('modal-desc');
+    const fileInput = document.getElementById('file-input');
+
+    // ---- Toast ----
+    let _toastTimer;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    // ---- Projects ----
+    async function loadProjects() {
+      try {
+        const res = await fetch('/api/projects');
+        const projects = await res.json();
+        const current = projectSelect.value;
+        projectSelect.innerHTML = '<option value="">— select project —</option>';
+        projects.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p; opt.textContent = p;
+          if (p === current) opt.selected = true;
+          projectSelect.appendChild(opt);
+        });
+      } catch (e) { showToast('Failed to load projects.'); }
+    }
+    loadProjects();
+
+    // ---- New Project Modal ----
+    btnNew.addEventListener('click', () => {
+      modalName.value = ''; modalDesc.value = '';
+      modalBackdrop.classList.add('open');
+      modalName.focus();
+    });
+    modalCancel.addEventListener('click', () => modalBackdrop.classList.remove('open'));
+    modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) modalBackdrop.classList.remove('open'); });
+    modalCreate.addEventListener('click', async () => {
+      const name = modalName.value.trim();
+      if (!name) { showToast('Project name is required.'); return; }
+      try {
+        const res = await fetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, description: modalDesc.value.trim() }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        modalBackdrop.classList.remove('open');
+        await loadProjects();
+        projectSelect.value = data.project_id;
+        showToast(`Project "${data.project_id}" created.`);
+      } catch (e) { showToast(`Error: ${e.message}`); }
+    });
+
+    // ---- Import JSON ----
+    btnImport.addEventListener('click', () => {
+      if (!projectSelect.value) { showToast('Select a project first.'); return; }
+      fileInput.value = '';
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const projectId = projectSelect.value;
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        showToast('Importing…');
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/import`, {
+          method: 'POST', body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+        showToast(`Imported: ${data.imported}, Skipped: ${data.skipped}`);
+      } catch (e) { showToast(`Import failed: ${e.message}`); }
+    });
+
+    // ---- Chat ----
+    function appendBubble(text, role, isThinking = false) {
+      const div = document.createElement('div');
+      div.className = `bubble ${role}${isThinking ? ' thinking' : ''}`;
+      div.textContent = text;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return div;
+    }
+
+    async function sendMessage() {
+      const msg = msgInput.value.trim();
+      const projectId = projectSelect.value;
+      if (!msg) return;
+      if (!projectId) { showToast('Select or create a project first.'); return; }
+
+      appendBubble(msg, 'user');
+      msgInput.value = '';
+      msgInput.style.height = 'auto';
+      btnSend.disabled = true;
+
+      const thinkingBubble = appendBubble('Thinking…', 'secretary', true);
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, project_id: projectId }),
+        });
+        const data = await res.json();
+        thinkingBubble.remove();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+        appendBubble(data.response, 'secretary');
+      } catch (e) {
+        thinkingBubble.remove();
+        appendBubble(`Error: ${e.message}`, 'secretary');
+      } finally {
+        btnSend.disabled = false;
+        msgInput.focus();
+      }
+    }
+
+    btnSend.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+    // Auto-resize textarea
+    msgInput.addEventListener('input', () => {
+      msgInput.style.height = 'auto';
+      msgInput.style.height = Math.min(msgInput.scrollHeight, 140) + 'px';
+    });
+  </script>
+</body>
+
+</html>
