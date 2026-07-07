@@ -87,6 +87,10 @@ class ChromaStore:
     def list_projects(self) -> list[str]:
         return [col.name for col in self._client.list_collections()]
 
+    def delete_project(self, project_id: str) -> None:
+        """Delete a project collection entirely from ChromaDB."""
+        self._client.delete_collection(name=project_id)
+
     def import_chunks(
         self,
         project_id: str,

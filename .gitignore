@@ -181,5 +181,5 @@ cython_debug/
 .cursorindexingignore
 
 # Custom
-.sqlite3
 .github/reference/*
+chroma_db/*

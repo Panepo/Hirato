@@ -76,6 +76,20 @@
       background: #059669;
     }
 
+    #btn-delete-project {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    #btn-delete-project:hover {
+      background: #dc2626;
+    }
+
+    #btn-delete-project:disabled {
+      background: #fca5a5;
+      cursor: default;
+    }
+
     /* ---- Chat area ---- */
     #chat-area {
       flex: 1;
@@ -262,6 +276,7 @@
       <option value="">— select project —</option>
     </select>
     <button id="btn-new-project">+ New Project</button>
+    <button id="btn-delete-project" disabled>🗑 Delete Project</button>
     <button id="btn-import">⬆ Import JSON</button>
   </div>
 
@@ -299,6 +314,7 @@
     const btnSend = document.getElementById('btn-send');
     const projectSelect = document.getElementById('project-select');
     const btnNew = document.getElementById('btn-new-project');
+    const btnDeleteProject = document.getElementById('btn-delete-project');
     const btnImport = document.getElementById('btn-import');
     const toast = document.getElementById('toast');
     const modalBackdrop = document.getElementById('modal-backdrop');
@@ -334,6 +350,10 @@
     }
     loadProjects();
 
+    projectSelect.addEventListener('change', () => {
+      btnDeleteProject.disabled = !projectSelect.value;
+    });
+
     // ---- New Project Modal ----
     btnNew.addEventListener('click', () => {
       modalName.value = ''; modalDesc.value = '';
@@ -358,6 +378,25 @@
         projectSelect.value = data.project_id;
         showToast(`Project "${data.project_id}" created.`);
       } catch (e) { showToast(`Error: ${e.message}`); }
+    });
+
+    // ---- Delete Project ----
+    btnDeleteProject.addEventListener('click', async () => {
+      const projectId = projectSelect.value;
+      if (!projectId) return;
+      if (!confirm(`Delete project "${projectId}" and all its memories? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+        await loadProjects();
+        projectSelect.value = '';
+        btnDeleteProject.disabled = true;
+        chatArea.innerHTML = '';
+        showToast(`Project "${projectId}" deleted.`);
+      } catch (e) { showToast(`Delete failed: ${e.message}`); }
     });
 
     // ---- Import JSON ----

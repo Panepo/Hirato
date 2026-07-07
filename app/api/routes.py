@@ -96,3 +96,11 @@ async def import_embedded_json(
 
     result = chroma_store.import_chunks(project_id=project_id, chunks=chunks)
     return result
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+async def delete_project(project_id: str) -> None:
+    try:
+        chroma_store.delete_project(project_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Project not found: {exc}") from exc
