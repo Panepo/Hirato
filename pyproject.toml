@@ -1,2 +1,7 @@
+[project]
+name = "hirato"
+version = "0.1.0"
+requires-python = ">=3.11"
+
 [tool.poe.tasks]
-dev = "uvicorn main:app --reload"
+dev = "uvicorn main:app --port 7950 --reload"

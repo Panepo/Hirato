@@ -12,5 +12,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str
     CHROMA_PERSIST_PATH: str = "./chroma_db"
 
+    PORT: int = 7950
+
 
 settings = Settings()
