@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from app.agent.graph import secretary_graph
-from app.agent.nodes import chat_llm
+from app.agent.nodes import (
+    answer_node_astream,
+    chat_llm,
+    extractor_node,
+    retriever_node,
+    router_node,
+    store_node,
+)
 from app.agent.prompts import TITLE_PROMPT
 from app.memory.sessions import sessions_store
 from app.memory.store import chroma_store
@@ -168,6 +178,124 @@ async def chat(body: ChatRequest) -> ChatResponse:
             pass  # title generation is best-effort
 
     return ChatResponse(response=agent_response, session_id=session_id, title_updated=title_updated)
+
+
+# ---------------------------------------------------------------------------
+# Streaming chat
+# ---------------------------------------------------------------------------
+
+@router.post("/chat/stream")
+async def chat_stream(body: ChatRequest) -> StreamingResponse:
+    if not body.project_id:
+        raise HTTPException(status_code=400, detail="project_id is required.")
+
+    # Resolve or create session
+    session_id = body.session_id
+    if not session_id:
+        session = await sessions_store.create_session(body.project_id)
+        session_id = session["id"]
+
+    prior_messages = await sessions_store.get_messages(session_id)
+    context_messages: list[str] = [m["content"] for m in prior_messages if m["role"] == "user"]
+    context_messages.append(body.message)
+
+    state: dict = {
+        "messages": context_messages,
+        "project_id": body.project_id,
+        "intents": [],
+        "report_segment": None,
+        "question_segment": None,
+        "extracted_summary": None,
+        "retrieved_docs": None,
+        "store_response": None,
+        "answer_response": None,
+        "response": None,
+    }
+
+    # Run preprocessing nodes in thread pool (they make blocking LLM calls)
+    router_result = await asyncio.to_thread(router_node, state)
+    state.update(router_result)
+
+    extractor_result = await asyncio.to_thread(extractor_node, state)
+    state.update(extractor_result)
+
+    store_result = await asyncio.to_thread(store_node, state)
+    state.update(store_result)
+
+    retriever_result = await asyncio.to_thread(retriever_node, state)
+    state.update(retriever_result)
+
+    frozen_state = dict(state)
+    frozen_session_id = session_id
+    is_first_turn = not prior_messages
+    user_message = body.message
+
+    async def event_generator():
+        full_response_parts: list[str] = []
+
+        yield f"data: {json.dumps({'type': 'session', 'session_id': frozen_session_id})}\n\n"
+
+        # Emit store response (progress report ack) immediately if present
+        store_resp: str | None = frozen_state.get("store_response")
+        if store_resp:
+            full_response_parts.append(store_resp)
+            yield f"data: {json.dumps({'type': 'token', 'content': store_resp})}\n\n"
+
+        # Stream the answer if there is a question intent
+        if "question" in frozen_state.get("intents", []):
+            if store_resp:
+                sep = "\n\n"
+                full_response_parts.append(sep)
+                yield f"data: {json.dumps({'type': 'token', 'content': sep})}\n\n"
+
+            gen_start = time.perf_counter()
+            first_chunk_at: float | None = None
+            last_chunk_at: float | None = None
+            answer_chunks: list[str] = []
+
+            async for chunk in answer_node_astream(frozen_state):
+                now = time.perf_counter()
+                if first_chunk_at is None:
+                    first_chunk_at = now
+                last_chunk_at = now
+                answer_chunks.append(chunk)
+                full_response_parts.append(chunk)
+                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+            ttfw = round(first_chunk_at - gen_start, 2) if first_chunk_at is not None else 0.0
+            total = round((last_chunk_at or gen_start) - gen_start, 2)
+            gen_duration = round((last_chunk_at - first_chunk_at), 2) if (last_chunk_at and first_chunk_at and last_chunk_at > first_chunk_at) else 0.01
+            word_count = len("".join(answer_chunks).split())
+            wps = round(word_count / gen_duration, 1) if gen_duration > 0 else 0.0
+
+            yield f"data: {json.dumps({'type': 'metrics', 'ttfw': ttfw, 'wps': wps, 'total': total})}\n\n"
+
+        full_response = "".join(full_response_parts) or "No response generated."
+
+        # Persist messages
+        await sessions_store.add_message(frozen_session_id, "user", user_message)
+        await sessions_store.add_message(frozen_session_id, "assistant", full_response)
+
+        # Generate title on first turn (best-effort)
+        title_updated = False
+        if is_first_turn:
+            try:
+                title_resp = await asyncio.to_thread(
+                    chat_llm.invoke,
+                    [SystemMessage(content=TITLE_PROMPT), HumanMessage(content=user_message)],
+                )
+                await sessions_store.update_title(frozen_session_id, title_resp.content.strip())
+                title_updated = True
+            except Exception:
+                pass
+
+        yield f"data: {json.dumps({'type': 'done', 'session_id': frozen_session_id, 'title_updated': title_updated})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/projects/{project_id}/import")

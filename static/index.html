@@ -244,6 +244,15 @@
       font-style: italic;
     }
 
+    .metrics-bar {
+      align-self: flex-start;
+      font-size: 0.72rem;
+      color: #64748b;
+      padding: 0 0.25rem;
+      margin-top: -0.4rem;
+      font-variant-numeric: tabular-nums;
+    }
+
     /* ---- Input bar ---- */
     #input-bar {
       background: #fff;
@@ -720,6 +729,17 @@
       return div;
     }
 
+    function appendStreamingBubble() {
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble secretary';
+      const metricsBar = document.createElement('div');
+      metricsBar.className = 'metrics-bar';
+      chatArea.appendChild(bubble);
+      chatArea.appendChild(metricsBar);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return { bubble, metricsBar };
+    }
+
     async function sendMessage() {
       const msg = msgInput.value.trim();
       const projectId = projectSelect.value;
@@ -753,35 +773,82 @@
       msgInput.style.height = 'auto';
       btnSend.disabled = true;
 
-      const thinkingBubble = appendBubble('Thinking…', 'secretary', true);
+      const { bubble: responseBubble, metricsBar } = appendStreamingBubble();
+      responseBubble.textContent = '';
+      metricsBar.textContent = 'Generating\u2026';
 
       try {
-        const res = await fetch('api/chat', {
+        const res = await fetch('api/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: msg, project_id: projectId, session_id: currentSessionId }),
         });
-        const data = await res.json();
-        thinkingBubble.remove();
-        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
-        appendBubble(data.response, 'secretary');
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
 
-        // Update sidebar title if newly generated
-        if (data.title_updated && data.session_id) {
-          // Re-fetch to get the updated title, or refresh sidebar
-          const sessionRes = await fetch(`api/sessions/${encodeURIComponent(data.session_id)}`);
-          if (sessionRes.ok) {
-            const updated = await sessionRes.json();
-            const entry = sessionList.querySelector(`[data-id="${data.session_id}"]`);
-            if (entry) {
-              const titleEl = entry.querySelector('.session-title');
-              if (titleEl) titleEl.textContent = updated.title || 'New conversation';
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+        let sessionUpdated = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          // Process complete SSE events (delimited by \n\n)
+          let boundary;
+          while ((boundary = sseBuffer.indexOf('\n\n')) !== -1) {
+            const eventText = sseBuffer.slice(0, boundary);
+            sseBuffer = sseBuffer.slice(boundary + 2);
+
+            for (const line of eventText.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              let event;
+              try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+              if (event.type === 'session' && !sessionUpdated) {
+                currentSessionId = event.session_id;
+                setActiveSessionEntry(currentSessionId);
+                sessionUpdated = true;
+
+              } else if (event.type === 'token') {
+                responseBubble.textContent += event.content;
+                chatArea.scrollTop = chatArea.scrollHeight;
+
+              } else if (event.type === 'metrics') {
+                metricsBar.textContent =
+                  `\u23F1 First word: ${event.ttfw}s\u2003|\u2003${event.wps} w/s\u2003|\u2003Total: ${event.total}s`;
+
+              } else if (event.type === 'done') {
+                if (event.title_updated && event.session_id) {
+                  try {
+                    const sessionRes = await fetch(`api/sessions/${encodeURIComponent(event.session_id)}`);
+                    if (sessionRes.ok) {
+                      const updated = await sessionRes.json();
+                      const entry = sessionList.querySelector(`[data-id="${event.session_id}"]`);
+                      if (entry) {
+                        const titleEl = entry.querySelector('.session-title');
+                        if (titleEl) titleEl.textContent = updated.title || 'New conversation';
+                      }
+                    }
+                  } catch { /* best-effort */ }
+                }
+                if (!responseBubble.textContent) {
+                  responseBubble.textContent = 'No response generated.';
+                }
+                if (!metricsBar.textContent.startsWith('\u23F1')) {
+                  metricsBar.textContent = '';
+                }
+              }
             }
           }
         }
       } catch (e) {
-        thinkingBubble.remove();
-        appendBubble(`Error: ${e.message}`, 'secretary');
+        responseBubble.textContent = `Error: ${e.message}`;
+        metricsBar.textContent = '';
       } finally {
         btnSend.disabled = false;
         msgInput.focus();

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
@@ -149,3 +149,32 @@ def combiner_node(state: dict[str, Any]) -> dict[str, Any]:
     if state.get("answer_response"):
         parts.append(state["answer_response"])
     return {"response": "\n\n".join(parts) if parts else "No response generated."}
+
+
+async def answer_node_astream(state: dict[str, Any]) -> AsyncGenerator[str, None]:
+    """Stream answer tokens from the LLM for the streaming chat endpoint."""
+    if "question" not in state.get("intents", []):
+        return
+    question: str = state.get("question_segment") or state["messages"][-1]
+    docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
+
+    if not docs:
+        context_text = "(No relevant memories found for this project.)"
+    else:
+        parts: list[str] = []
+        for i, doc in enumerate(docs, start=1):
+            meta = doc.get("metadata", {})
+            doc_date = meta.get("date", "unknown")
+            doc_type = meta.get("type", "unknown")
+            parts.append(f"[{i}] ({doc_date}, {doc_type})\n{doc['content']}")
+        context_text = "\n\n---\n\n".join(parts)
+
+    system_content = ANSWER_PROMPT.format(context=context_text)
+    async for chunk in chat_llm.astream(
+        [
+            SystemMessage(content=system_content),
+            HumanMessage(content=question),
+        ]
+    ):
+        if chunk.content:
+            yield chunk.content
