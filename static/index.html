@@ -90,6 +90,120 @@
       cursor: default;
     }
 
+    /* ---- Main layout: sidebar + chat ---- */
+    #main-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ---- Sidebar ---- */
+    #sidebar {
+      width: 240px;
+      flex-shrink: 0;
+      background: #1e293b;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-right: 1px solid #0f172a;
+    }
+
+    #btn-new-chat {
+      margin: 0.75rem;
+      padding: 0.55rem 0.9rem;
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+
+    #btn-new-chat:hover {
+      background: #2563eb;
+    }
+
+    #session-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 0 0.5rem 0.75rem;
+    }
+
+    .session-entry {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-radius: 6px;
+      padding: 0.5rem 0.6rem;
+      cursor: pointer;
+      user-select: none;
+      color: #cbd5e1;
+    }
+
+    .session-entry:hover {
+      background: #334155;
+    }
+
+    .session-entry.active {
+      background: #334155;
+      color: #f8fafc;
+    }
+
+    .session-meta {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .session-title {
+      font-size: 0.82rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-date {
+      font-size: 0.72rem;
+      color: #64748b;
+      margin-top: 1px;
+    }
+
+    .btn-delete-session {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      line-height: 1;
+      display: none;
+    }
+
+    .session-entry:hover .btn-delete-session,
+    .session-entry.active .btn-delete-session {
+      display: inline-block;
+    }
+
+    .btn-delete-session:hover {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    /* ---- Chat panel ---- */
+    #chat-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
     /* ---- Chat area ---- */
     #chat-area {
       flex: 1;
@@ -280,13 +394,27 @@
     <button id="btn-import">⬆ Import JSON</button>
   </div>
 
-  <!-- Chat area -->
-  <div id="chat-area"></div>
+  <!-- Main layout -->
+  <div id="main-layout">
 
-  <!-- Input bar -->
-  <div id="input-bar">
-    <textarea id="msg-input" rows="1" placeholder="Type a progress report or ask a question…"></textarea>
-    <button id="btn-send">Send</button>
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <button id="btn-new-chat">+ New Chat</button>
+      <div id="session-list"></div>
+    </div>
+
+    <!-- Chat panel -->
+    <div id="chat-panel">
+      <!-- Chat area -->
+      <div id="chat-area"></div>
+
+      <!-- Input bar -->
+      <div id="input-bar">
+        <textarea id="msg-input" rows="1" placeholder="Type a progress report or ask a question…"></textarea>
+        <button id="btn-send">Send</button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Toast -->
@@ -323,6 +451,11 @@
     const modalName = document.getElementById('modal-name');
     const modalDesc = document.getElementById('modal-desc');
     const fileInput = document.getElementById('file-input');
+    const btnNewChat = document.getElementById('btn-new-chat');
+    const sessionList = document.getElementById('session-list');
+
+    // ---- State ----
+    let currentSessionId = null;
 
     // ---- Toast ----
     let _toastTimer;
@@ -332,6 +465,154 @@
       clearTimeout(_toastTimer);
       _toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
     }
+
+    // ---- Relative date helper ----
+    function relativeDate(isoString) {
+      const ms = Date.now() - new Date(isoString).getTime();
+      const mins = Math.floor(ms / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      if (days < 7) return `${days}d ago`;
+      return new Date(isoString).toLocaleDateString();
+    }
+
+    // ---- Sessions ----
+    async function loadSessions(projectId) {
+      sessionList.innerHTML = '';
+      if (!projectId) return;
+      try {
+        const res = await fetch(`/api/sessions?project_id=${encodeURIComponent(projectId)}`);
+        const sessions = await res.json();
+        sessions.forEach(s => renderSessionEntry(s));
+      } catch (e) { showToast('Failed to load sessions.'); }
+    }
+
+    function renderSessionEntry(session) {
+      const entry = document.createElement('div');
+      entry.className = 'session-entry' + (session.id === currentSessionId ? ' active' : '');
+      entry.dataset.id = session.id;
+
+      const meta = document.createElement('div');
+      meta.className = 'session-meta';
+
+      const title = document.createElement('div');
+      title.className = 'session-title';
+      title.textContent = session.title || 'New conversation';
+
+      const date = document.createElement('div');
+      date.className = 'session-date';
+      date.textContent = relativeDate(session.updated_at);
+
+      meta.appendChild(title);
+      meta.appendChild(date);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-session';
+      delBtn.title = 'Delete conversation';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this conversation?')) return;
+        await deleteSession(session.id);
+      });
+
+      entry.appendChild(meta);
+      entry.appendChild(delBtn);
+      entry.addEventListener('click', () => selectSession(session.id));
+      sessionList.appendChild(entry);
+    }
+
+    function setActiveSessionEntry(sessionId) {
+      sessionList.querySelectorAll('.session-entry').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === sessionId);
+      });
+    }
+
+    async function selectSession(sessionId) {
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        if (!res.ok) throw new Error('Session not found');
+        const session = await res.json();
+        currentSessionId = sessionId;
+        setActiveSessionEntry(sessionId);
+        chatArea.innerHTML = '';
+        session.messages.forEach(m => appendBubble(m.content, m.role === 'user' ? 'user' : 'secretary'));
+      } catch (e) { showToast(`Failed to load session: ${e.message}`); }
+    }
+
+    async function newChat() {
+      const projectId = projectSelect.value;
+      if (!projectId) { showToast('Select a project first.'); return; }
+      try {
+        const res = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId }),
+        });
+        const session = await res.json();
+        currentSessionId = session.id;
+        chatArea.innerHTML = '';
+        // Prepend to sidebar
+        const existing = sessionList.querySelector('.session-entry');
+        const temp = document.createElement('div');
+        renderSessionEntryInto(temp, session);
+        if (existing) sessionList.insertBefore(temp.firstChild, existing);
+        else sessionList.appendChild(temp.firstChild);
+        setActiveSessionEntry(currentSessionId);
+      } catch (e) { showToast(`Error: ${e.message}`); }
+    }
+
+    // Helper used by newChat to build entry DOM without full re-render
+    function renderSessionEntryInto(container, session) {
+      const frag = document.createDocumentFragment();
+      const entry = document.createElement('div');
+      entry.className = 'session-entry active';
+      entry.dataset.id = session.id;
+
+      const meta = document.createElement('div');
+      meta.className = 'session-meta';
+      const title = document.createElement('div');
+      title.className = 'session-title';
+      title.textContent = session.title || 'New conversation';
+      const date = document.createElement('div');
+      date.className = 'session-date';
+      date.textContent = relativeDate(session.updated_at);
+      meta.appendChild(title);
+      meta.appendChild(date);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-session';
+      delBtn.title = 'Delete conversation';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this conversation?')) return;
+        await deleteSession(session.id);
+      });
+
+      entry.appendChild(meta);
+      entry.appendChild(delBtn);
+      entry.addEventListener('click', () => selectSession(session.id));
+      frag.appendChild(entry);
+      container.appendChild(frag);
+    }
+
+    async function deleteSession(sessionId) {
+      try {
+        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+        const entry = sessionList.querySelector(`[data-id="${sessionId}"]`);
+        if (entry) entry.remove();
+        if (currentSessionId === sessionId) {
+          currentSessionId = null;
+          chatArea.innerHTML = '';
+        }
+      } catch (e) { showToast(`Delete failed: ${e.message}`); }
+    }
+
+    btnNewChat.addEventListener('click', newChat);
 
     // ---- Projects ----
     async function loadProjects() {
@@ -352,6 +633,9 @@
 
     projectSelect.addEventListener('change', () => {
       btnDeleteProject.disabled = !projectSelect.value;
+      currentSessionId = null;
+      chatArea.innerHTML = '';
+      loadSessions(projectSelect.value);
     });
 
     // ---- New Project Modal ----
@@ -376,6 +660,8 @@
         modalBackdrop.classList.remove('open');
         await loadProjects();
         projectSelect.value = data.project_id;
+        btnDeleteProject.disabled = false;
+        loadSessions(data.project_id);
         showToast(`Project "${data.project_id}" created.`);
       } catch (e) { showToast(`Error: ${e.message}`); }
     });
@@ -395,6 +681,8 @@
         projectSelect.value = '';
         btnDeleteProject.disabled = true;
         chatArea.innerHTML = '';
+        currentSessionId = null;
+        sessionList.innerHTML = '';
         showToast(`Project "${projectId}" deleted.`);
       } catch (e) { showToast(`Delete failed: ${e.message}`); }
     });
@@ -438,6 +726,28 @@
       if (!msg) return;
       if (!projectId) { showToast('Select or create a project first.'); return; }
 
+      // Auto-create session if none active
+      if (!currentSessionId) {
+        try {
+          const res = await fetch('/api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId }),
+          });
+          const session = await res.json();
+          currentSessionId = session.id;
+          const temp = document.createElement('div');
+          renderSessionEntryInto(temp, session);
+          const existing = sessionList.querySelector('.session-entry');
+          if (existing) sessionList.insertBefore(temp.firstChild, existing);
+          else sessionList.appendChild(temp.firstChild);
+          setActiveSessionEntry(currentSessionId);
+        } catch (e) {
+          showToast(`Failed to create session: ${e.message}`);
+          return;
+        }
+      }
+
       appendBubble(msg, 'user');
       msgInput.value = '';
       msgInput.style.height = 'auto';
@@ -449,12 +759,26 @@
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, project_id: projectId }),
+          body: JSON.stringify({ message: msg, project_id: projectId, session_id: currentSessionId }),
         });
         const data = await res.json();
         thinkingBubble.remove();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
         appendBubble(data.response, 'secretary');
+
+        // Update sidebar title if newly generated
+        if (data.title_updated && data.session_id) {
+          // Re-fetch to get the updated title, or refresh sidebar
+          const sessionRes = await fetch(`/api/sessions/${encodeURIComponent(data.session_id)}`);
+          if (sessionRes.ok) {
+            const updated = await sessionRes.json();
+            const entry = sessionList.querySelector(`[data-id="${data.session_id}"]`);
+            if (entry) {
+              const titleEl = entry.querySelector('.session-title');
+              if (titleEl) titleEl.textContent = updated.title || 'New conversation';
+            }
+          }
+        }
       } catch (e) {
         thinkingBubble.remove();
         appendBubble(`Error: ${e.message}`, 'secretary');

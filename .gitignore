@@ -183,3 +183,4 @@ cython_debug/
 # Custom
 .github/reference/*
 chroma_db/*
+*.db

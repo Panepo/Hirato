@@ -9,3 +9,4 @@ requests
 chromadb
 python-dotenv
 python-multipart
+aiosqlite

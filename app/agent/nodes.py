@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, timezone, datetime
+import json
+from datetime import date
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
-from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
+from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, SPLITTER_PROMPT
 from app.core.config import settings
 from app.memory.store import chroma_store
 
@@ -24,12 +25,6 @@ if settings.CHAT_MODEL_THINK:
 
 chat_llm = ChatOllama(**_chat_kwargs)
 
-router_llm = ChatOllama(
-    base_url=settings.OLLAMA_CHAT_URL,
-    model=settings.CHAT_MODEL_ROUTER,
-    client_kwargs={"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}},
-)
-
 
 # ---------------------------------------------------------------------------
 # Node functions
@@ -37,40 +32,67 @@ router_llm = ChatOllama(
 
 
 def router_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Classify user message as 'progress_report' or 'question'."""
-    user_message: str = state["messages"][-1]
-    response = router_llm.invoke(
-        [
-            SystemMessage(content=ROUTER_PROMPT),
-            HumanMessage(content=user_message),
-        ]
-    )
-    raw = response.content.strip().lower()
-    intent = "progress_report" if "progress_report" in raw else "question"
-    return {"intent": intent}
-
-
-def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Extract structured summary from weekly progress report."""
+    """Classify and segment the user message using chat_llm."""
     user_message: str = state["messages"][-1]
     response = chat_llm.invoke(
         [
-            SystemMessage(content=EXTRACTOR_PROMPT),
+            SystemMessage(content=SPLITTER_PROMPT),
             HumanMessage(content=user_message),
+        ]
+    )
+    try:
+        data = json.loads(response.content.strip())
+        intents: list[str] = data.get("intents", [])
+        report_segment: str | None = data.get("report_segment") or None
+        question_segment: str | None = data.get("question_segment") or None
+    except (json.JSONDecodeError, AttributeError):
+        intents = []
+        report_segment = None
+        question_segment = None
+
+    # Reconcile: remove an intent when its segment is missing
+    if "progress_report" in intents and not report_segment:
+        intents = [i for i in intents if i != "progress_report"]
+    if "question" in intents and not question_segment:
+        intents = [i for i in intents if i != "question"]
+
+    # Fallback: treat entire message as a question
+    if not intents:
+        intents = ["question"]
+        question_segment = user_message
+
+    return {
+        "intents": intents,
+        "report_segment": report_segment,
+        "question_segment": question_segment,
+    }
+
+
+def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Extract structured summary from the report segment."""
+    if "progress_report" not in state.get("intents", []):
+        return {}
+    report_text: str = state.get("report_segment") or state["messages"][-1]
+    response = chat_llm.invoke(
+        [
+            SystemMessage(content=EXTRACTOR_PROMPT),
+            HumanMessage(content=report_text),
         ]
     )
     return {"extracted_summary": response.content.strip()}
 
 
 def store_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Persist raw message + extracted summary into ChromaDB."""
+    """Persist report segment + extracted summary into ChromaDB."""
+    if "progress_report" not in state.get("intents", []):
+        return {}
     project_id: str = state["project_id"]
-    user_message: str = state["messages"][-1]
+    report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
 
     chroma_store.add_memory(
         project_id=project_id,
-        content=user_message,
+        content=report_text,
         metadata={"date": today, "type": "raw"},
     )
     chroma_store.add_memory(
@@ -78,21 +100,25 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
         content=state.get("extracted_summary", ""),
         metadata={"date": today, "type": "summary"},
     )
-    return {"response": "Your progress report has been saved successfully."}
+    return {"store_response": "Your progress report has been saved successfully."}
 
 
 def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Retrieve relevant documents from ChromaDB (already sorted newest-first)."""
+    """Retrieve relevant documents from ChromaDB using the question segment."""
+    if "question" not in state.get("intents", []):
+        return {}
     project_id: str = state["project_id"]
-    query: str = state["messages"][-1]
+    query: str = state.get("question_segment") or state["messages"][-1]
     docs = chroma_store.search_memory(project_id=project_id, query=query, n_results=5)
     return {"retrieved_docs": docs}
 
 
 def answer_node(state: dict[str, Any]) -> dict[str, Any]:
     """Generate an answer using retrieved context docs."""
-    user_message: str = state["messages"][-1]
-    docs: list[dict[str, Any]] = state.get("retrieved_docs", [])
+    if "question" not in state.get("intents", []):
+        return {}
+    question: str = state.get("question_segment") or state["messages"][-1]
+    docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
 
     if not docs:
         context_text = "(No relevant memories found for this project.)"
@@ -109,7 +135,17 @@ def answer_node(state: dict[str, Any]) -> dict[str, Any]:
     response = chat_llm.invoke(
         [
             SystemMessage(content=system_content),
-            HumanMessage(content=user_message),
+            HumanMessage(content=question),
         ]
     )
-    return {"response": response.content.strip()}
+    return {"answer_response": response.content.strip()}
+
+
+def combiner_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Combine store and answer responses into a single final response."""
+    parts: list[str] = []
+    if state.get("store_response"):
+        parts.append(state["store_response"])
+    if state.get("answer_response"):
+        parts.append(state["answer_response"])
+    return {"response": "\n\n".join(parts) if parts else "No response generated."}

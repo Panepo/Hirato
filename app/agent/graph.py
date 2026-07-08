@@ -7,6 +7,7 @@ from typing_extensions import TypedDict
 
 from app.agent.nodes import (
     answer_node,
+    combiner_node,
     extractor_node,
     retriever_node,
     router_node,
@@ -17,14 +18,14 @@ from app.agent.nodes import (
 class AgentState(TypedDict):
     messages: list[str]
     project_id: str
-    intent: Optional[str]
+    intents: list[str]
+    report_segment: Optional[str]
+    question_segment: Optional[str]
     extracted_summary: Optional[str]
     retrieved_docs: Optional[list[dict[str, Any]]]
+    store_response: Optional[str]
+    answer_response: Optional[str]
     response: Optional[str]
-
-
-def _route_intent(state: AgentState) -> str:
-    return state.get("intent", "question")
 
 
 builder = StateGraph(AgentState)
@@ -34,19 +35,14 @@ builder.add_node("extractor_node", extractor_node)
 builder.add_node("store_node", store_node)
 builder.add_node("retriever_node", retriever_node)
 builder.add_node("answer_node", answer_node)
+builder.add_node("combiner_node", combiner_node)
 
 builder.add_edge(START, "router_node")
-builder.add_conditional_edges(
-    "router_node",
-    _route_intent,
-    {
-        "progress_report": "extractor_node",
-        "question": "retriever_node",
-    },
-)
+builder.add_edge("router_node", "extractor_node")
 builder.add_edge("extractor_node", "store_node")
-builder.add_edge("store_node", END)
+builder.add_edge("store_node", "retriever_node")
 builder.add_edge("retriever_node", "answer_node")
-builder.add_edge("answer_node", END)
+builder.add_edge("answer_node", "combiner_node")
+builder.add_edge("combiner_node", END)
 
 secretary_graph = builder.compile()

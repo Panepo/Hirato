@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     CHAT_MODEL_THINK: bool = False
     EMBEDDING_MODEL: str
     CHROMA_PERSIST_PATH: str = "./chroma_db"
+    SESSIONS_DB_PATH: str = "./sessions.db"
 
     PORT: int = 7950
 
