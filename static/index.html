@@ -484,7 +484,7 @@
       sessionList.innerHTML = '';
       if (!projectId) return;
       try {
-        const res = await fetch(`/api/sessions?project_id=${encodeURIComponent(projectId)}`);
+        const res = await fetch(`api/sessions?project_id=${encodeURIComponent(projectId)}`);
         const sessions = await res.json();
         sessions.forEach(s => renderSessionEntry(s));
       } catch (e) { showToast('Failed to load sessions.'); }
@@ -533,7 +533,7 @@
 
     async function selectSession(sessionId) {
       try {
-        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        const res = await fetch(`api/sessions/${encodeURIComponent(sessionId)}`);
         if (!res.ok) throw new Error('Session not found');
         const session = await res.json();
         currentSessionId = sessionId;
@@ -547,7 +547,7 @@
       const projectId = projectSelect.value;
       if (!projectId) { showToast('Select a project first.'); return; }
       try {
-        const res = await fetch('/api/sessions', {
+        const res = await fetch('api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ project_id: projectId }),
@@ -602,7 +602,7 @@
 
     async function deleteSession(sessionId) {
       try {
-        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+        await fetch(`api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
         const entry = sessionList.querySelector(`[data-id="${sessionId}"]`);
         if (entry) entry.remove();
         if (currentSessionId === sessionId) {
@@ -617,7 +617,7 @@
     // ---- Projects ----
     async function loadProjects() {
       try {
-        const res = await fetch('/api/projects');
+        const res = await fetch('api/projects');
         const projects = await res.json();
         const current = projectSelect.value;
         projectSelect.innerHTML = '<option value="">— select project —</option>';
@@ -650,7 +650,7 @@
       const name = modalName.value.trim();
       if (!name) { showToast('Project name is required.'); return; }
       try {
-        const res = await fetch('/api/projects', {
+        const res = await fetch('api/projects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, description: modalDesc.value.trim() }),
@@ -672,7 +672,7 @@
       if (!projectId) return;
       if (!confirm(`Delete project "${projectId}" and all its memories? This cannot be undone.`)) return;
       try {
-        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+        const res = await fetch(`api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.detail || res.statusText);
@@ -701,7 +701,7 @@
       form.append('file', file);
       try {
         showToast('Importing…');
-        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/import`, {
+        const res = await fetch(`api/projects/${encodeURIComponent(projectId)}/import`, {
           method: 'POST', body: form,
         });
         const data = await res.json();
@@ -729,7 +729,7 @@
       // Auto-create session if none active
       if (!currentSessionId) {
         try {
-          const res = await fetch('/api/sessions', {
+          const res = await fetch('api/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ project_id: projectId }),
@@ -756,7 +756,7 @@
       const thinkingBubble = appendBubble('Thinking…', 'secretary', true);
 
       try {
-        const res = await fetch('/api/chat', {
+        const res = await fetch('api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: msg, project_id: projectId, session_id: currentSessionId }),
@@ -769,7 +769,7 @@
         // Update sidebar title if newly generated
         if (data.title_updated && data.session_id) {
           // Re-fetch to get the updated title, or refresh sidebar
-          const sessionRes = await fetch(`/api/sessions/${encodeURIComponent(data.session_id)}`);
+          const sessionRes = await fetch(`api/sessions/${encodeURIComponent(data.session_id)}`);
           if (sessionRes.ok) {
             const updated = await sessionRes.json();
             const entry = sessionList.querySelector(`[data-id="${data.session_id}"]`);
