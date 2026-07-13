@@ -387,8 +387,105 @@
       background: #3b82f6;
       color: #fff;
     }
+
+    #modal-create:disabled {
+      background: #93c5fd;
+      cursor: default;
+    }
+
+    /* ---- Project search in modal ---- */
+    .modal {
+      width: 440px;
+    }
+
+    #modal-search-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    #modal-search-row input {
+      flex: 1;
+    }
+
+    #modal-search-btn {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+
+    #modal-search-btn:disabled {
+      background: #93c5fd;
+      cursor: default;
+    }
+
+    #modal-candidates {
+      max-height: 210px;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+
+    .modal-candidate {
+      padding: 0.45rem 0.75rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+    }
+
+    .modal-candidate:last-child {
+      border-bottom: none;
+    }
+
+    .modal-candidate:hover {
+      background: #f1f5f9;
+    }
+
+    .modal-candidate.selected {
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-weight: 500;
+    }
+
+    .candidate-code {
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: #64748b;
+      flex-shrink: 0;
+    }
+
+    .modal-candidate.selected .candidate-code {
+      color: #3b82f6;
+    }
+
+    #modal-no-results {
+      padding: 0.6rem 0.75rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      font-style: italic;
+    }
+
+    #modal-selected-row {
+      font-size: 0.85rem;
+      color: #475569;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      padding: 0.45rem 0.75rem;
+    }
+
+    #modal-selected-row strong {
+      color: #166534;
+    }
   </style>
-</head>
 
 <body>
 
@@ -433,11 +530,19 @@
   <div class="modal-backdrop" id="modal-backdrop">
     <div class="modal">
       <h2>New Project</h2>
-      <input id="modal-name" type="text" placeholder="Project name" />
-      <textarea id="modal-desc" rows="2" placeholder="Description (optional)"></textarea>
+      <div id="modal-search-row">
+        <input id="modal-search" type="text" placeholder="Search Shiratsuyu project name…" />
+        <button id="modal-search-btn">Search</button>
+      </div>
+      <div id="modal-candidates" style="display:none">
+        <div id="modal-candidates-list"></div>
+      </div>
+      <div id="modal-selected-row" style="display:none">
+        Selected: <strong id="modal-selected-name"></strong>
+      </div>
       <div class="modal-actions">
         <button id="modal-cancel">Cancel</button>
-        <button id="modal-create">Create</button>
+        <button id="modal-create" disabled>Create</button>
       </div>
     </div>
   </div>
@@ -457,8 +562,12 @@
     const modalBackdrop = document.getElementById('modal-backdrop');
     const modalCancel = document.getElementById('modal-cancel');
     const modalCreate = document.getElementById('modal-create');
-    const modalName = document.getElementById('modal-name');
-    const modalDesc = document.getElementById('modal-desc');
+    const modalSearch = document.getElementById('modal-search');
+    const modalSearchBtn = document.getElementById('modal-search-btn');
+    const modalCandidates = document.getElementById('modal-candidates');
+    const modalCandidatesList = document.getElementById('modal-candidates-list');
+    const modalSelectedRow = document.getElementById('modal-selected-row');
+    const modalSelectedName = document.getElementById('modal-selected-name');
     const fileInput = document.getElementById('file-input');
     const btnNewChat = document.getElementById('btn-new-chat');
     const sessionList = document.getElementById('session-list');
@@ -648,21 +757,86 @@
     });
 
     // ---- New Project Modal ----
+    let _selectedProject = null; // { code, name }
+
+    function resetModal() {
+      modalSearch.value = '';
+      modalCandidates.style.display = 'none';
+      modalCandidatesList.innerHTML = '';
+      modalSelectedRow.style.display = 'none';
+      modalSelectedName.textContent = '';
+      modalCreate.disabled = true;
+      _selectedProject = null;
+    }
+
+    function selectCandidate(code, name, el) {
+      _selectedProject = { code, name };
+      modalCandidatesList.querySelectorAll('.modal-candidate').forEach(c => c.classList.remove('selected'));
+      el.classList.add('selected');
+      modalSelectedName.textContent = code ? `${code} — ${name}` : name;
+      modalSelectedRow.style.display = '';
+      modalCreate.disabled = false;
+    }
+
+    async function doSearch() {
+      const q = modalSearch.value.trim();
+      if (!q) return;
+      modalSearchBtn.disabled = true;
+      modalSearchBtn.textContent = '…';
+      modalCandidates.style.display = 'none';
+      modalCandidatesList.innerHTML = '';
+      modalSelectedRow.style.display = 'none';
+      modalCreate.disabled = true;
+      _selectedProject = null;
+      try {
+        const res = await fetch(`api/shiratsuyu/projects?q=${encodeURIComponent(q)}`);
+        if (!res.ok) throw new Error(await res.text());
+        const results = await res.json();
+        modalCandidates.style.display = '';
+        if (!results.length) {
+          modalCandidatesList.innerHTML = '<div id="modal-no-results">No matching projects found.</div>';
+        } else {
+          results.forEach(({ code, name }) => {
+            const item = document.createElement('div');
+            item.className = 'modal-candidate';
+            const codeSpan = document.createElement('span');
+            codeSpan.className = 'candidate-code';
+            codeSpan.textContent = code;
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = name;
+            item.appendChild(codeSpan);
+            item.appendChild(nameSpan);
+            item.addEventListener('click', () => selectCandidate(code, name, item));
+            modalCandidatesList.appendChild(item);
+          });
+        }
+      } catch (e) {
+        modalCandidates.style.display = '';
+        modalCandidatesList.innerHTML = `<div id="modal-no-results">Search failed: ${e.message}</div>`;
+      } finally {
+        modalSearchBtn.disabled = false;
+        modalSearchBtn.textContent = 'Search';
+      }
+    }
+
     btnNew.addEventListener('click', () => {
-      modalName.value = ''; modalDesc.value = '';
+      resetModal();
       modalBackdrop.classList.add('open');
-      modalName.focus();
+      modalSearch.focus();
     });
     modalCancel.addEventListener('click', () => modalBackdrop.classList.remove('open'));
     modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) modalBackdrop.classList.remove('open'); });
+    modalSearch.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+    modalSearchBtn.addEventListener('click', doSearch);
+
     modalCreate.addEventListener('click', async () => {
-      const name = modalName.value.trim();
-      if (!name) { showToast('Project name is required.'); return; }
+      if (!_selectedProject) return;
+      const name = `${_selectedProject.code} — ${_selectedProject.name}`.trim();
       try {
         const res = await fetch('api/projects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, description: modalDesc.value.trim() }),
+          body: JSON.stringify({ name }),
         });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();

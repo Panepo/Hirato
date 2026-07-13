@@ -15,5 +15,8 @@ class Settings(BaseSettings):
 
     PORT: int = 7950
 
+    SHIRATSUYU_URL: str = "https://srddadmin.getac.com.tw:4001"
+    SHIRATSUYU_BEARER: str = ""
+
 
 settings = Settings()

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import time
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -20,6 +22,7 @@ from app.agent.nodes import (
     store_node,
 )
 from app.agent.prompts import TITLE_PROMPT
+from app.core.config import settings
 from app.memory.sessions import sessions_store
 from app.memory.store import chroma_store
 
@@ -65,6 +68,45 @@ async def create_project(body: NewProjectRequest) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Project name cannot be empty.")
     chroma_store.get_or_create_collection(project_id)
     return {"project_id": project_id, "description": body.description}
+
+
+# ---------------------------------------------------------------------------
+# Shiratsuyu project search
+# ---------------------------------------------------------------------------
+
+
+@router.get("/shiratsuyu/projects")
+async def search_shiratsuyu_projects(q: str = "") -> list[dict]:
+    """Fetch all Shiratsuyu projects via REST and return those matching query q."""
+    query = q.strip().lower()
+    if not query or not settings.SHIRATSUYU_BEARER:
+        return []
+
+    url = settings.SHIRATSUYU_URL.rstrip("/") + "/project/"
+    headers = {"Authorization": f"Bearer {settings.SHIRATSUYU_BEARER}"}
+
+    async with httpx.AsyncClient(verify=False) as client:
+        r = await client.get(url, headers=headers, timeout=15.0)
+        r.raise_for_status()
+        projects: list[dict] = r.json()
+
+    scored: list[dict] = []
+    for proj in projects:
+        code: str = str(proj.get("code", "") or "")
+        name: str = str(proj.get("name", "") or "")
+        combined = f"{code} {name}".lower()
+
+        if query in combined:
+            score = 1.0 if query == combined else 0.9
+        else:
+            score = difflib.SequenceMatcher(None, query, combined).ratio()
+
+        if score >= 0.8:
+            scored.append({"score": score, "code": code, "name": name})
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return [{"code": p["code"], "name": p["name"]} for p in scored[:15]]
+
 
 
 # ---------------------------------------------------------------------------
