@@ -485,6 +485,224 @@
     #modal-selected-row strong {
       color: #166534;
     }
+
+    /* ---- Memory Browser Modal ---- */
+    #memory-modal .modal {
+      width: 680px;
+    }
+
+    .memory-list {
+      max-height: 420px;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+    }
+
+    .memory-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid #f1f5f9;
+      cursor: pointer;
+    }
+
+    .memory-item:last-child {
+      border-bottom: none;
+    }
+
+    .memory-item:hover {
+      background: #f8fafc;
+    }
+
+    .memory-item-body {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .memory-type-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 10px;
+      margin-bottom: 3px;
+      text-transform: lowercase;
+    }
+
+    .memory-type-badge.raw {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    .memory-type-badge.summary {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .memory-type-badge.reference_doc {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .memory-type-badge.unknown {
+      background: #e2e8f0;
+      color: #475569;
+    }
+
+    .memory-item-preview {
+      font-size: 0.85rem;
+      color: #1a1a1a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .memory-item-meta {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .btn-delete-memory {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 2px 5px;
+      border-radius: 4px;
+      line-height: 1;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .memory-item:hover .btn-delete-memory {
+      opacity: 1;
+    }
+
+    .btn-delete-memory:hover {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    #memory-empty,
+    #memory-loading {
+      padding: 0.75rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      font-style: italic;
+      text-align: center;
+    }
+
+    #memory-header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+    }
+
+    #memory-count {
+      font-size: 0.8rem;
+      color: #64748b;
+      font-weight: 400;
+    }
+
+    /* ---- Memory groups ---- */
+    .memory-group+.memory-group {
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .memory-group-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.75rem;
+      background: #f8fafc;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #64748b;
+      cursor: pointer;
+      user-select: none;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .memory-group-header:hover {
+      background: #f1f5f9;
+    }
+
+    .memory-group-toggle {
+      font-size: 0.6rem;
+    }
+
+    .memory-group-count {
+      font-weight: 400;
+      margin-left: auto;
+      color: #94a3b8;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 0.8rem;
+    }
+
+    .memory-group-items.collapsed {
+      display: none;
+    }
+
+    /* ---- Memory detail view ---- */
+    #memory-detail-view {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    #memory-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    #memory-detail-back {
+      background: none;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      font-size: 0.82rem;
+      cursor: pointer;
+      color: #475569;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+
+    #memory-detail-back:hover {
+      background: #f1f5f9;
+    }
+
+    #memory-detail-id {
+      font-size: 0.7rem;
+      color: #94a3b8;
+      font-family: monospace;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-left: auto;
+      max-width: 220px;
+    }
+
+    .memory-detail-content {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 380px;
+      overflow-y: auto;
+      color: #1a1a1a;
+    }
   </style>
 
 <body>
@@ -497,6 +715,7 @@
     </select>
     <button id="btn-new-project">+ New Project</button>
     <button id="btn-delete-project" disabled>🗑 Delete Project</button>
+    <button id="btn-browse-memory" disabled style="background:#6366f1;color:#fff;">🗂 Memory</button>
     <button id="btn-import">⬆ Import JSON</button>
   </div>
 
@@ -550,6 +769,41 @@
   <!-- Hidden file input for JSON import -->
   <input type="file" id="file-input" accept=".json" style="display:none" />
 
+  <!-- Memory Browser Modal -->
+  <div class="modal-backdrop" id="memory-modal-backdrop">
+    <div class="modal" id="memory-modal">
+
+      <!-- List view -->
+      <div id="memory-list-view">
+        <div id="memory-header">
+          <h2>Memory Browser</h2>
+          <span id="memory-count"></span>
+        </div>
+        <div id="memory-loading" style="display:none">Loading…</div>
+        <div id="memory-empty" style="display:none">No memories stored for this project.</div>
+        <div id="memory-list" class="memory-list" style="display:none"></div>
+        <div class="modal-actions">
+          <button id="memory-modal-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
+        </div>
+      </div>
+
+      <!-- Detail view -->
+      <div id="memory-detail-view" style="display:none">
+        <div id="memory-detail-header">
+          <button id="memory-detail-back">← Back</button>
+          <span id="memory-detail-badge" class="memory-type-badge"></span>
+          <span id="memory-detail-id"></span>
+        </div>
+        <div id="memory-detail-meta" class="memory-item-meta"></div>
+        <div id="memory-detail-content" class="memory-detail-content"></div>
+        <div class="modal-actions">
+          <button id="memory-detail-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <script>
     const chatArea = document.getElementById('chat-area');
     const msgInput = document.getElementById('msg-input');
@@ -571,6 +825,22 @@
     const fileInput = document.getElementById('file-input');
     const btnNewChat = document.getElementById('btn-new-chat');
     const sessionList = document.getElementById('session-list');
+
+    const btnBrowseMemory = document.getElementById('btn-browse-memory');
+    const memoryModalBackdrop = document.getElementById('memory-modal-backdrop');
+    const memoryList = document.getElementById('memory-list');
+    const memoryCount = document.getElementById('memory-count');
+    const memoryEmpty = document.getElementById('memory-empty');
+    const memoryLoading = document.getElementById('memory-loading');
+    const memoryModalClose = document.getElementById('memory-modal-close');
+    const memoryListView = document.getElementById('memory-list-view');
+    const memoryDetailView = document.getElementById('memory-detail-view');
+    const memoryDetailBack = document.getElementById('memory-detail-back');
+    const memoryDetailBadge = document.getElementById('memory-detail-badge');
+    const memoryDetailId = document.getElementById('memory-detail-id');
+    const memoryDetailMeta = document.getElementById('memory-detail-meta');
+    const memoryDetailContent = document.getElementById('memory-detail-content');
+    const memoryDetailClose = document.getElementById('memory-detail-close');
 
     // ---- State ----
     let currentSessionId = null;
@@ -751,6 +1021,7 @@
 
     projectSelect.addEventListener('change', () => {
       btnDeleteProject.disabled = !projectSelect.value;
+      btnBrowseMemory.disabled = !projectSelect.value;
       currentSessionId = null;
       chatArea.innerHTML = '';
       loadSessions(projectSelect.value);
@@ -847,6 +1118,190 @@
         loadSessions(data.project_id);
         showToast(`Project "${data.project_id}" created.`);
       } catch (e) { showToast(`Error: ${e.message}`); }
+    });
+
+    // ---- Memory Browser ----
+    function openMemoryDetail(item) {
+      const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
+      memoryDetailBadge.className = `memory-type-badge ${typeClass}`;
+      memoryDetailBadge.textContent = item.type || 'unknown';
+      memoryDetailId.textContent = item.id;
+      const metaParts = [];
+      if (item.date) metaParts.push(item.date);
+      if (item.source) metaParts.push(item.source);
+      if (item.section) metaParts.push(item.section);
+      memoryDetailMeta.textContent = metaParts.join(' • ');
+      memoryDetailContent.textContent = item.content || '(empty)';
+      memoryListView.style.display = 'none';
+      memoryDetailView.style.display = '';
+    }
+
+    function closeMemoryDetail() {
+      memoryDetailView.style.display = 'none';
+      memoryListView.style.display = '';
+    }
+
+    function renderMemoryItem(item, groupCountSpan, groupItemsDiv) {
+      const row = document.createElement('div');
+      row.className = 'memory-item';
+      row.dataset.id = item.id;
+
+      const body = document.createElement('div');
+      body.className = 'memory-item-body';
+      body.addEventListener('click', () => openMemoryDetail(item));
+
+      const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
+      const badge = document.createElement('span');
+      badge.className = `memory-type-badge ${typeClass}`;
+      badge.textContent = item.type || 'unknown';
+
+      const preview = document.createElement('div');
+      preview.className = 'memory-item-preview';
+      preview.textContent = item.preview || '(empty)';
+
+      const metaParts = [];
+      if (item.date) metaParts.push(item.date);
+      if (item.source) metaParts.push(item.source);
+      if (item.section) metaParts.push(item.section);
+      const meta = document.createElement('div');
+      meta.className = 'memory-item-meta';
+      meta.textContent = metaParts.join(' • ');
+
+      body.appendChild(badge);
+      body.appendChild(preview);
+      body.appendChild(meta);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-memory';
+      delBtn.title = 'Delete this memory';
+      delBtn.textContent = '\u2715';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this memory entry? This cannot be undone.')) return;
+        const projectId = projectSelect.value;
+        try {
+          const res = await fetch(
+            `api/projects/${encodeURIComponent(projectId)}/memories/${encodeURIComponent(item.id)}`,
+            { method: 'DELETE' }
+          );
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || res.statusText);
+          }
+          row.remove();
+          if (groupCountSpan && groupItemsDiv) {
+            const groupRemaining = groupItemsDiv.querySelectorAll('.memory-item').length;
+            groupCountSpan.textContent = `${groupRemaining}`;
+          }
+          const total = memoryList.querySelectorAll('.memory-item').length;
+          memoryCount.textContent = `(${total} item${total !== 1 ? 's' : ''})`;
+          if (total === 0) {
+            memoryList.style.display = 'none';
+            memoryEmpty.style.display = '';
+          }
+          showToast('Memory entry deleted.');
+        } catch (e) {
+          showToast(`Delete failed: ${e.message}`);
+        }
+      });
+
+      row.appendChild(body);
+      row.appendChild(delBtn);
+      return row;
+    }
+
+    function renderMemoryGroup(label, items) {
+      const group = document.createElement('div');
+      group.className = 'memory-group';
+
+      const header = document.createElement('div');
+      header.className = 'memory-group-header';
+
+      const toggle = document.createElement('span');
+      toggle.className = 'memory-group-toggle';
+      toggle.textContent = '▼';
+
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = label;
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'memory-group-count';
+      countSpan.textContent = `${items.length}`;
+
+      header.appendChild(toggle);
+      header.appendChild(labelSpan);
+      header.appendChild(countSpan);
+
+      const itemsDiv = document.createElement('div');
+      itemsDiv.className = 'memory-group-items';
+
+      header.addEventListener('click', () => {
+        itemsDiv.classList.toggle('collapsed');
+        toggle.textContent = itemsDiv.classList.contains('collapsed') ? '▶' : '▼';
+      });
+
+      items.forEach(item => itemsDiv.appendChild(renderMemoryItem(item, countSpan, itemsDiv)));
+
+      group.appendChild(header);
+      group.appendChild(itemsDiv);
+      return group;
+    }
+
+    async function openMemoryBrowser() {
+      const projectId = projectSelect.value;
+      if (!projectId) return;
+
+      // Reset to list view
+      memoryDetailView.style.display = 'none';
+      memoryListView.style.display = '';
+      memoryList.innerHTML = '';
+      memoryList.style.display = 'none';
+      memoryEmpty.style.display = 'none';
+      memoryLoading.style.display = '';
+      memoryCount.textContent = '';
+      memoryModalBackdrop.classList.add('open');
+
+      try {
+        const res = await fetch(`api/projects/${encodeURIComponent(projectId)}/memories`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+        const items = await res.json();
+        memoryLoading.style.display = 'none';
+        if (items.length === 0) {
+          memoryEmpty.style.display = '';
+        } else {
+          const projectItems = items.filter(i => i.type === 'raw' || i.type === 'summary');
+          const refItems = items.filter(i => i.type === 'reference_doc');
+          const otherItems = items.filter(i => !['raw', 'summary', 'reference_doc'].includes(i.type));
+          if (projectItems.length > 0) memoryList.appendChild(renderMemoryGroup('Project Memory', projectItems));
+          if (refItems.length > 0) memoryList.appendChild(renderMemoryGroup('Reference Docs', refItems));
+          if (otherItems.length > 0) memoryList.appendChild(renderMemoryGroup('Other', otherItems));
+          memoryList.style.display = '';
+          memoryCount.textContent = `(${items.length} item${items.length !== 1 ? 's' : ''})`;
+        }
+      } catch (e) {
+        memoryLoading.style.display = 'none';
+        memoryEmpty.style.display = '';
+        memoryEmpty.textContent = `Failed to load memories: ${e.message}`;
+        showToast(`Error: ${e.message}`);
+      }
+    }
+
+    function closeMemoryModal() {
+      memoryModalBackdrop.classList.remove('open');
+      // Reset to list view for next open
+      memoryDetailView.style.display = 'none';
+      memoryListView.style.display = '';
+    }
+
+    btnBrowseMemory.addEventListener('click', openMemoryBrowser);
+    memoryModalClose.addEventListener('click', closeMemoryModal);
+    memoryDetailBack.addEventListener('click', closeMemoryDetail);
+    memoryDetailClose.addEventListener('click', closeMemoryModal);
+    memoryModalBackdrop.addEventListener('click', e => {
+      if (e.target === memoryModalBackdrop) closeMemoryModal();
     });
 
     // ---- Delete Project ----

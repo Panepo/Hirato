@@ -133,6 +133,37 @@ class ChromaStore:
 
         return {"imported": len(to_add_ids), "skipped": skipped}
 
+    def list_memories(self, project_id: str) -> list[dict[str, Any]]:
+        """Return all documents for a project as preview dicts, sorted by date descending."""
+        try:
+            collection = self._client.get_collection(name=project_id)
+        except Exception as exc:
+            raise ValueError(f"Project '{project_id}' not found.") from exc
+        result = collection.get(include=["documents", "metadatas"])
+        items: list[dict[str, Any]] = []
+        for doc_id, doc, meta in zip(result["ids"], result["documents"], result["metadatas"]):
+            meta = meta or {}
+            items.append({
+                "id": doc_id,
+                "content": doc or "",
+                "preview": (doc or "")[:150],
+                "date": meta.get("date", ""),
+                "type": meta.get("type", ""),
+                "source": meta.get("source", ""),
+                "section": meta.get("section", ""),
+            })
+        items.sort(key=lambda x: x["date"], reverse=True)
+        return items
+
+    def delete_memory(self, project_id: str, memory_id: str) -> bool:
+        """Delete a single document from the project collection."""
+        try:
+            collection = self._client.get_collection(name=project_id)
+        except Exception as exc:
+            raise ValueError(f"Project '{project_id}' not found.") from exc
+        collection.delete(ids=[memory_id])
+        return True
+
 
 # Module-level singleton
 chroma_store = ChromaStore()

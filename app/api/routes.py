@@ -77,6 +77,33 @@ async def create_project(body: NewProjectRequest) -> dict[str, str]:
     return {"project_id": project_id, "description": body.description}
 
 
+@router.delete("/projects/{project_id}", status_code=200)
+async def delete_project(project_id: str) -> dict[str, bool]:
+    try:
+        chroma_store.delete_project(project_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    project_cache.invalidate()
+    return {"ok": True}
+
+
+@router.get("/projects/{project_id}/memories")
+async def list_memories(project_id: str) -> list[dict]:
+    try:
+        return chroma_store.list_memories(project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/projects/{project_id}/memories/{memory_id}", status_code=200)
+async def delete_memory(project_id: str, memory_id: str) -> dict[str, bool]:
+    try:
+        chroma_store.delete_memory(project_id, memory_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Shiratsuyu project search
 # ---------------------------------------------------------------------------
