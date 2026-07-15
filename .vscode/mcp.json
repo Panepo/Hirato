@@ -1,0 +1,19 @@
+{
+  "servers": {
+    "shiratsuyu": {
+      "type": "http",
+      "url": "https://srddadmin.getac.com.tw:4001/mcp",
+      "headers": {
+        "X-API-Key": "shrt_a876dc859fc28c83414b16d734742a20"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "shiratsuyuApiToken",
+      "type": "promptString",
+      "description": "Shiratsuyu API Token (shrt_...)",
+      "password": true
+    }
+  ]
+}

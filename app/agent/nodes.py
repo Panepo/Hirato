@@ -9,6 +9,7 @@ from langchain_ollama import ChatOllama
 
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, SPLITTER_PROMPT
 from app.core.config import settings
+from app.memory.project_cache import project_cache
 from app.memory.store import chroma_store
 
 # ---------------------------------------------------------------------------
@@ -45,10 +46,12 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
         intents: list[str] = data.get("intents", [])
         report_segment: str | None = data.get("report_segment") or None
         question_segment: str | None = data.get("question_segment") or None
+        project_hint: str | None = data.get("project_hint") or None
     except (json.JSONDecodeError, AttributeError):
         intents = []
         report_segment = None
         question_segment = None
+        project_hint = None
 
     # Reconcile: remove an intent when its segment is missing
     if "progress_report" in intents and not report_segment:
@@ -65,7 +68,28 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
         "intents": intents,
         "report_segment": report_segment,
         "question_segment": question_segment,
+        "project_hint": project_hint,
     }
+
+
+async def project_resolver_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Resolve project_hint → project_id when no project_id was provided.
+
+    Only overrides an empty project_id; an explicit selection from the UI
+    is always respected.
+    """
+    if state.get("project_id"):
+        return {}  # already set — nothing to do
+
+    hint: str | None = state.get("project_hint")
+    if not hint:
+        return {}
+
+    match = await project_cache.resolve(hint)
+    if match:
+        return {"project_id": match["code"] or match["name"]}
+
+    return {}
 
 
 def extractor_node(state: dict[str, Any]) -> dict[str, Any]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 import json
+import re
 import time
 from typing import Any
 
@@ -17,12 +18,14 @@ from app.agent.nodes import (
     answer_node_astream,
     chat_llm,
     extractor_node,
+    project_resolver_node,
     retriever_node,
     router_node,
     store_node,
 )
 from app.agent.prompts import TITLE_PROMPT
 from app.core.config import settings
+from app.memory.project_cache import project_cache
 from app.memory.sessions import sessions_store
 from app.memory.store import chroma_store
 
@@ -41,7 +44,7 @@ class NewProjectRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    project_id: str
+    project_id: str = ""  # may be resolved from message text by project_resolver_node
     session_id: str | None = None
 
 
@@ -63,10 +66,14 @@ async def list_projects() -> list[str]:
 
 @router.post("/projects", status_code=201)
 async def create_project(body: NewProjectRequest) -> dict[str, str]:
-    project_id = body.name.strip().replace(" ", "_")
+    project_id = re.sub(r"[^a-zA-Z0-9._-]", "_", body.name.strip())
+    project_id = re.sub(r"_+", "_", project_id).strip("_.-")
+    if len(project_id) < 3:
+        raise HTTPException(status_code=400, detail="Project name too short or contains only invalid characters (min 3 alphanumeric).")
     if not project_id:
         raise HTTPException(status_code=400, detail="Project name cannot be empty.")
     chroma_store.get_or_create_collection(project_id)
+    project_cache.invalidate()  # ensure next chat sees the new project
     return {"project_id": project_id, "description": body.description}
 
 
@@ -176,23 +183,21 @@ async def _generate_title(message: str) -> str:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest) -> ChatResponse:
-    if not body.project_id:
-        raise HTTPException(status_code=400, detail="project_id is required.")
-
-    # Resolve or create session
+    # Resolve or create session (project_id may still be empty — graph will resolve it)
     session_id = body.session_id
-    if not session_id:
+    if body.project_id and not session_id:
         session = await sessions_store.create_session(body.project_id)
         session_id = session["id"]
 
     # Load prior messages to build context
-    prior_messages = await sessions_store.get_messages(session_id)
+    prior_messages = await sessions_store.get_messages(session_id) if session_id else []
     context_messages: list[str] = [m["content"] for m in prior_messages if m["role"] == "user"]
     context_messages.append(body.message)
 
     initial_state = {
         "messages": context_messages,
         "project_id": body.project_id,
+        "project_hint": None,
         "intents": [],
         "report_segment": None,
         "question_segment": None,
@@ -203,6 +208,17 @@ async def chat(body: ChatRequest) -> ChatResponse:
         "response": None,
     }
     final_state = await secretary_graph.ainvoke(initial_state)
+
+    # Validate that we have a project after resolution
+    resolved_project_id: str = final_state.get("project_id", "")
+    if not resolved_project_id:
+        raise HTTPException(status_code=400, detail="Could not identify a project. Please specify project_id or mention the project name in your message.")
+
+    # Create session now if project was resolved from the message
+    if not session_id:
+        session = await sessions_store.create_session(resolved_project_id)
+        session_id = session["id"]
+
     agent_response: str = final_state.get("response", "")
 
     # Persist messages
@@ -228,22 +244,20 @@ async def chat(body: ChatRequest) -> ChatResponse:
 
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest) -> StreamingResponse:
-    if not body.project_id:
-        raise HTTPException(status_code=400, detail="project_id is required.")
-
-    # Resolve or create session
+    # Resolve or create session (project_id may be empty if resolved from message)
     session_id = body.session_id
-    if not session_id:
+    if body.project_id and not session_id:
         session = await sessions_store.create_session(body.project_id)
         session_id = session["id"]
 
-    prior_messages = await sessions_store.get_messages(session_id)
+    prior_messages = await sessions_store.get_messages(session_id) if session_id else []
     context_messages: list[str] = [m["content"] for m in prior_messages if m["role"] == "user"]
     context_messages.append(body.message)
 
     state: dict = {
         "messages": context_messages,
         "project_id": body.project_id,
+        "project_hint": None,
         "intents": [],
         "report_segment": None,
         "question_segment": None,
@@ -257,6 +271,18 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
     # Run preprocessing nodes in thread pool (they make blocking LLM calls)
     router_result = await asyncio.to_thread(router_node, state)
     state.update(router_result)
+
+    # Resolve project from hint if project_id is still empty
+    resolver_result = await project_resolver_node(state)
+    state.update(resolver_result)
+
+    if not state.get("project_id"):
+        raise HTTPException(status_code=400, detail="Could not identify a project. Please specify project_id or mention the project name in your message.")
+
+    # Create session now if it was resolved from the message
+    if not session_id:
+        session = await sessions_store.create_session(state["project_id"])
+        session_id = session["id"]
 
     extractor_result = await asyncio.to_thread(extractor_node, state)
     state.update(extractor_result)

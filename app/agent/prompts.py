@@ -2,11 +2,12 @@ SPLITTER_PROMPT = """You are a message classifier and segmenter. Analyse the use
 - "report_segment": text where the user is reporting what they did, accomplished, or worked on (weekly/daily update, status report, blockers, next steps). Set to null if no such content exists.
 - "question_segment": text where the user is asking for information, querying past work, or seeking an answer. Set to null if no such content exists.
 - "intents": a JSON array — include "progress_report" if report_segment is non-null, include "question" if question_segment is non-null.
+- "project_hint": the project code or project name the user explicitly mentions (e.g. "Hirato", "PRJ-42", "the Alpha project"). Extract only clearly stated project identifiers. Set to null if none is mentioned.
 
-Return ONLY a valid JSON object with exactly these three keys. No explanation, no markdown fences.
+Return ONLY a valid JSON object with exactly these four keys. No explanation, no markdown fences.
 
-Example for a mixed message "I finished the auth module this week. What blockers did I have last month?":
-{"intents": ["progress_report", "question"], "report_segment": "I finished the auth module this week.", "question_segment": "What blockers did I have last month?"}
+Example for a mixed message "I finished the auth module for Hirato this week. What blockers did I have last month?":
+{"intents": ["progress_report", "question"], "report_segment": "I finished the auth module for Hirato this week.", "question_segment": "What blockers did I have last month?", "project_hint": "Hirato"}
 """
 
 EXTRACTOR_PROMPT = """You are a project secretary. Extract a structured summary from the user's weekly progress report.
