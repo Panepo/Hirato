@@ -17,7 +17,8 @@ COPY app/ ./app/
 COPY static/ ./static/
 
 # Persistent storage volumes
-VOLUME ["/app/chroma_db", "/app/sessions.db"]
+RUN mkdir -p /app/data
+VOLUME ["/app/chroma_db", "/app/data"]
 
 EXPOSE 7950
 

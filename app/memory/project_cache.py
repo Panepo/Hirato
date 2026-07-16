@@ -32,6 +32,7 @@ class _ProjectCache:
                 {
                     "code": str(p.get("code", "") or ""),
                     "name": str(p.get("name", "") or ""),
+                    "status": str(p.get("status", "") or ""),
                 }
                 for p in raw
             ]
@@ -84,9 +85,41 @@ class _ProjectCache:
         return None
 
     async def all_projects(self) -> list[dict[str, str]]:
-        """Return all cached projects (code + name)."""
+        """Return all cached projects (code + name + status)."""
         await self._ensure_fresh()
         return list(self._projects)
+
+    async def search_projects(self, query: str = "") -> list[dict[str, str]]:
+        """Return projects with status 'created' (or no status), optionally
+        filtered by a case-insensitive substring/fuzzy match on code or name."""
+        await self._ensure_fresh()
+        # Only include projects whose status is "created" or unset
+        projects = [
+            p for p in self._projects
+            if not p.get("status") or p.get("status") == "created"
+        ]
+        if not query:
+            return projects
+        q = query.strip().lower()
+        # Substring match first; fall back to fuzzy ratio >= 0.6
+        result: list[dict[str, str]] = []
+        fuzzy_candidates: list[tuple[float, dict[str, str]]] = []
+        for p in projects:
+            code_l = p["code"].lower()
+            name_l = p["name"].lower()
+            if q in code_l or q in name_l:
+                result.append(p)
+            else:
+                score = max(
+                    difflib.SequenceMatcher(None, q, code_l).ratio(),
+                    difflib.SequenceMatcher(None, q, name_l).ratio(),
+                )
+                if score >= 0.6:
+                    fuzzy_candidates.append((score, p))
+        # Append fuzzy matches sorted by score descending
+        fuzzy_candidates.sort(key=lambda x: x[0], reverse=True)
+        result.extend(p for _, p in fuzzy_candidates)
+        return result
 
     def invalidate(self) -> None:
         """Force a refresh on the next call (e.g. after creating a new project)."""

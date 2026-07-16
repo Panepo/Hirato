@@ -184,3 +184,4 @@ cython_debug/
 .github/reference/*
 chroma_db/*
 *.db
+deployment/*

@@ -18,5 +18,8 @@ class Settings(BaseSettings):
     SHIRATSUYU_URL: str = "https://srddadmin.getac.com.tw:4001"
     SHIRATSUYU_BEARER: str = ""
 
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_ACCESS_CODE: str = ""
+
 
 settings = Settings()

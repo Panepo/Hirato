@@ -11,3 +11,4 @@ python-dotenv
 python-multipart
 aiosqlite
 httpx
+python-telegram-bot>=21.0
