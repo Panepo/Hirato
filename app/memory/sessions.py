@@ -41,11 +41,38 @@ class SQLiteSessionStore:
                 )
                 """
             )
-            # Migration: add channel_id column if it was created without it
+            # Migration: inspect current columns
             async with db.execute("PRAGMA table_info(sessions)") as cursor:
                 columns = {row[1] for row in await cursor.fetchall()}
+
+            # Migration: add channel_id column if it was created without it
             if "channel_id" not in columns:
                 await db.execute("ALTER TABLE sessions ADD COLUMN channel_id TEXT NOT NULL DEFAULT ''")
+
+            # Migration: drop legacy project_id column (NOT NULL constraint breaks inserts)
+            if "project_id" in columns:
+                await db.execute(
+                    """
+                    CREATE TABLE sessions_migrated (
+                        id         TEXT PRIMARY KEY,
+                        channel_id TEXT NOT NULL,
+                        title      TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+                await db.execute(
+                    """
+                    INSERT INTO sessions_migrated(id, channel_id, title, created_at, updated_at)
+                    SELECT id,
+                           CASE WHEN channel_id IS NOT NULL AND channel_id != '' THEN channel_id ELSE project_id END,
+                           title, created_at, updated_at
+                    FROM sessions
+                    """
+                )
+                await db.execute("DROP TABLE sessions")
+                await db.execute("ALTER TABLE sessions_migrated RENAME TO sessions")
 
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel_id, updated_at DESC)"

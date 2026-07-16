@@ -36,6 +36,30 @@ class TelegramSessionManager:
                 )
                 """
             )
+            # Migration: rename project_id -> channel_id if old schema exists
+            async with db.execute("PRAGMA table_info(telegram_chat_states)") as cursor:
+                tcs_columns = {row[1] for row in await cursor.fetchall()}
+            if "project_id" in tcs_columns and "channel_id" not in tcs_columns:
+                await db.execute(
+                    """
+                    CREATE TABLE telegram_chat_states_migrated (
+                        chat_id    INTEGER PRIMARY KEY,
+                        channel_id TEXT,
+                        session_id TEXT,
+                        updated_at TEXT,
+                        FOREIGN KEY (chat_id) REFERENCES telegram_auth(chat_id) ON DELETE CASCADE
+                    )
+                    """
+                )
+                await db.execute(
+                    """
+                    INSERT INTO telegram_chat_states_migrated(chat_id, channel_id, session_id, updated_at)
+                    SELECT chat_id, project_id, session_id, updated_at
+                    FROM telegram_chat_states
+                    """
+                )
+                await db.execute("DROP TABLE telegram_chat_states")
+                await db.execute("ALTER TABLE telegram_chat_states_migrated RENAME TO telegram_chat_states")
             await db.commit()
 
     async def is_authed(self, chat_id: int) -> bool:

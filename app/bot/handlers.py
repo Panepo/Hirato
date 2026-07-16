@@ -216,6 +216,28 @@ async def session_info_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 # ---------------------------------------------------------------------------
+# /current
+# ---------------------------------------------------------------------------
+
+
+@require_auth
+async def current_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id: int = update.effective_chat.id  # type: ignore[union-attr]
+    state = await telegram_session_manager.get_state(chat_id)
+
+    if not state or not state.get("channel_id"):
+        await update.effective_message.reply_text(  # type: ignore[union-attr]
+            "No channel selected. Use /channel to select one."
+        )
+        return
+
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        f"📡 Current channel: `{state['channel_id']}`",
+        parse_mode="Markdown",
+    )
+
+
+# ---------------------------------------------------------------------------
 # /logout
 # ---------------------------------------------------------------------------
 
@@ -347,6 +369,7 @@ def get_handlers():
         CommandHandler("channel", channel_handler),
         CommandHandler("new", new_session_handler),
         CommandHandler("session", session_info_handler),
+        CommandHandler("current", current_handler),
         CommandHandler("logout", logout_handler),
         CallbackQueryHandler(channel_callback_handler),
         MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler),
