@@ -29,7 +29,7 @@ class TelegramSessionManager:
                 """
                 CREATE TABLE IF NOT EXISTS telegram_chat_states (
                     chat_id    INTEGER PRIMARY KEY,
-                    project_id TEXT,
+                    channel_id TEXT,
                     session_id TEXT,
                     updated_at TEXT,
                     FOREIGN KEY (chat_id) REFERENCES telegram_auth(chat_id) ON DELETE CASCADE
@@ -66,25 +66,25 @@ class TelegramSessionManager:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT chat_id, project_id, session_id, updated_at FROM telegram_chat_states WHERE chat_id=?",
+                "SELECT chat_id, channel_id, session_id, updated_at FROM telegram_chat_states WHERE chat_id=?",
                 (chat_id,),
             ) as cursor:
                 row = await cursor.fetchone()
         return dict(row) if row is not None else None
 
-    async def set_state(self, chat_id: int, project_id: str, session_id: str) -> None:
+    async def set_state(self, chat_id: int, channel_id: str, session_id: str) -> None:
         now = _now_iso()
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
                 """
-                INSERT INTO telegram_chat_states(chat_id, project_id, session_id, updated_at)
+                INSERT INTO telegram_chat_states(chat_id, channel_id, session_id, updated_at)
                 VALUES (?,?,?,?)
                 ON CONFLICT(chat_id) DO UPDATE SET
-                    project_id=excluded.project_id,
+                    channel_id=excluded.channel_id,
                     session_id=excluded.session_id,
                     updated_at=excluded.updated_at
                 """,
-                (chat_id, project_id, session_id, now),
+                (chat_id, channel_id, session_id, now),
             )
             await db.commit()
 

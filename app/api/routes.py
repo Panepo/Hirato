@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import difflib
 import json
 import re
 import time
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
@@ -18,14 +16,12 @@ from app.agent.nodes import (
     answer_node_astream,
     chat_llm,
     extractor_node,
-    project_resolver_node,
     retriever_node,
     router_node,
     store_node,
 )
 from app.agent.prompts import TITLE_PROMPT
 from app.core.config import settings
-from app.memory.project_cache import project_cache
 from app.memory.sessions import sessions_store
 from app.memory.store import chroma_store
 
@@ -37,14 +33,22 @@ router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------------------
 
 
-class NewProjectRequest(BaseModel):
+class NewChannelRequest(BaseModel):
     name: str
     description: str = ""
 
 
+class UpdateMemoryRequest(BaseModel):
+    content: str
+
+
+class ImportMemoriesRequest(BaseModel):
+    memories: list[dict]
+
+
 class ChatRequest(BaseModel):
     message: str
-    project_id: str = ""  # may be resolved from message text by project_resolver_node
+    channel_id: str = ""
     session_id: str | None = None
 
 
@@ -59,88 +63,65 @@ class ChatResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/projects")
-async def list_projects() -> list[str]:
-    return chroma_store.list_projects()
+@router.get("/channels")
+async def list_channels() -> list[str]:
+    return chroma_store.list_channels()
 
 
-@router.post("/projects", status_code=201)
-async def create_project(body: NewProjectRequest) -> dict[str, str]:
-    project_id = re.sub(r"[^a-zA-Z0-9._-]", "_", body.name.strip())
-    project_id = re.sub(r"_+", "_", project_id).strip("_.-")
-    if len(project_id) < 3:
-        raise HTTPException(status_code=400, detail="Project name too short or contains only invalid characters (min 3 alphanumeric).")
-    if not project_id:
-        raise HTTPException(status_code=400, detail="Project name cannot be empty.")
-    chroma_store.get_or_create_collection(project_id)
-    project_cache.invalidate()  # ensure next chat sees the new project
-    return {"project_id": project_id, "description": body.description}
+@router.post("/channels", status_code=201)
+async def create_channel(body: NewChannelRequest) -> dict[str, str]:
+    channel_id = re.sub(r"[^a-zA-Z0-9._-]", "_", body.name.strip())
+    channel_id = re.sub(r"_+", "_", channel_id).strip("_.-")
+    if len(channel_id) < 3:
+        raise HTTPException(status_code=400, detail="Channel name too short or contains only invalid characters (min 3 alphanumeric).")
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="Channel name cannot be empty.")
+    chroma_store.get_or_create_collection(channel_id)
+    return {"channel_id": channel_id, "description": body.description}
 
 
-@router.delete("/projects/{project_id}", status_code=200)
-async def delete_project(project_id: str) -> dict[str, bool]:
+@router.delete("/channels/{channel_id}", status_code=200)
+async def delete_channel(channel_id: str) -> dict[str, bool]:
     try:
-        chroma_store.delete_project(project_id)
+        chroma_store.delete_channel(channel_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    project_cache.invalidate()
     return {"ok": True}
 
 
-@router.get("/projects/{project_id}/memories")
-async def list_memories(project_id: str) -> list[dict]:
+@router.get("/channels/{channel_id}/memories")
+async def list_memories(channel_id: str) -> list[dict]:
     try:
-        return chroma_store.list_memories(project_id)
+        return chroma_store.list_memories(channel_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.delete("/projects/{project_id}/memories/{memory_id}", status_code=200)
-async def delete_memory(project_id: str, memory_id: str) -> dict[str, bool]:
+@router.delete("/channels/{channel_id}/memories/{memory_id}", status_code=200)
+async def delete_memory(channel_id: str, memory_id: str) -> dict[str, bool]:
     try:
-        chroma_store.delete_memory(project_id, memory_id)
+        chroma_store.delete_memory(channel_id, memory_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
 
 
-# ---------------------------------------------------------------------------
-# Shiratsuyu project search
-# ---------------------------------------------------------------------------
+@router.put("/channels/{channel_id}/memories/{memory_id}")
+async def update_memory(channel_id: str, memory_id: str, body: UpdateMemoryRequest) -> dict[str, bool]:
+    try:
+        chroma_store.update_memory(channel_id, memory_id, body.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
 
 
-@router.get("/shiratsuyu/projects")
-async def search_shiratsuyu_projects(q: str = "") -> list[dict]:
-    """Fetch all Shiratsuyu projects via REST and return those matching query q."""
-    query = q.strip().lower()
-    if not query or not settings.SHIRATSUYU_BEARER:
-        return []
-
-    url = settings.SHIRATSUYU_URL.rstrip("/") + "/project/"
-    headers = {"Authorization": f"Bearer {settings.SHIRATSUYU_BEARER}"}
-
-    async with httpx.AsyncClient(verify=False) as client:
-        r = await client.get(url, headers=headers, timeout=15.0)
-        r.raise_for_status()
-        projects: list[dict] = r.json()
-
-    scored: list[dict] = []
-    for proj in projects:
-        code: str = str(proj.get("code", "") or "")
-        name: str = str(proj.get("name", "") or "")
-        combined = f"{code} {name}".lower()
-
-        if query in combined:
-            score = 1.0 if query == combined else 0.9
-        else:
-            score = difflib.SequenceMatcher(None, query, combined).ratio()
-
-        if score >= 0.8:
-            scored.append({"score": score, "code": code, "name": name})
-
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return [{"code": p["code"], "name": p["name"]} for p in scored[:15]]
-
+@router.post("/channels/{channel_id}/memories/import", status_code=200)
+async def import_memories_endpoint(channel_id: str, body: ImportMemoriesRequest) -> dict[str, int]:
+    try:
+        result = chroma_store.import_memories(channel_id, body.memories)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -149,16 +130,16 @@ async def search_shiratsuyu_projects(q: str = "") -> list[dict]:
 
 
 @router.get("/sessions")
-async def list_sessions(project_id: str) -> list[dict[str, Any]]:
-    return await sessions_store.list_sessions(project_id)
+async def list_sessions(channel_id: str) -> list[dict[str, Any]]:
+    return await sessions_store.list_sessions(channel_id)
 
 
 @router.post("/sessions", status_code=201)
 async def create_session(body: dict[str, str]) -> dict[str, Any]:
-    project_id = body.get("project_id", "").strip()
-    if not project_id:
-        raise HTTPException(status_code=400, detail="project_id is required.")
-    return await sessions_store.create_session(project_id)
+    channel_id = body.get("channel_id", "").strip()
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="channel_id is required.")
+    return await sessions_store.create_session(channel_id)
 
 
 @router.get("/sessions/{session_id}")
@@ -210,10 +191,10 @@ async def _generate_title(message: str) -> str:
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest) -> ChatResponse:
-    # Resolve or create session (project_id may still be empty — graph will resolve it)
+    # Resolve or create session (channel_id may be empty if not provided)
     session_id = body.session_id
-    if body.project_id and not session_id:
-        session = await sessions_store.create_session(body.project_id)
+    if body.channel_id and not session_id:
+        session = await sessions_store.create_session(body.channel_id)
         session_id = session["id"]
 
     # Load prior messages to build context
@@ -223,8 +204,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
 
     initial_state = {
         "messages": context_messages,
-        "project_id": body.project_id,
-        "project_hint": None,
+        "channel_id": body.channel_id,
         "intents": [],
         "report_segment": None,
         "question_segment": None,
@@ -236,14 +216,14 @@ async def chat(body: ChatRequest) -> ChatResponse:
     }
     final_state = await secretary_graph.ainvoke(initial_state)
 
-    # Validate that we have a project after resolution
-    resolved_project_id: str = final_state.get("project_id", "")
-    if not resolved_project_id:
-        raise HTTPException(status_code=400, detail="Could not identify a project. Please specify project_id or mention the project name in your message.")
+    # Validate that we have a channel after resolution
+    resolved_channel_id: str = final_state.get("channel_id", "")
+    if not resolved_channel_id:
+        raise HTTPException(status_code=400, detail="Could not identify a channel. Please specify channel_id in your request.")
 
-    # Create session now if project was resolved from the message
+    # Create session now if channel was resolved from the message
     if not session_id:
-        session = await sessions_store.create_session(resolved_project_id)
+        session = await sessions_store.create_session(resolved_channel_id)
         session_id = session["id"]
 
     agent_response: str = final_state.get("response", "")
@@ -271,10 +251,10 @@ async def chat(body: ChatRequest) -> ChatResponse:
 
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest) -> StreamingResponse:
-    # Resolve or create session (project_id may be empty if resolved from message)
+    # Resolve or create session (channel_id may be empty if resolved from message)
     session_id = body.session_id
-    if body.project_id and not session_id:
-        session = await sessions_store.create_session(body.project_id)
+    if body.channel_id and not session_id:
+        session = await sessions_store.create_session(body.channel_id)
         session_id = session["id"]
 
     prior_messages = await sessions_store.get_messages(session_id) if session_id else []
@@ -283,8 +263,7 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
 
     state: dict = {
         "messages": context_messages,
-        "project_id": body.project_id,
-        "project_hint": None,
+        "channel_id": body.channel_id,
         "intents": [],
         "report_segment": None,
         "question_segment": None,
@@ -299,16 +278,12 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
     router_result = await asyncio.to_thread(router_node, state)
     state.update(router_result)
 
-    # Resolve project from hint if project_id is still empty
-    resolver_result = await project_resolver_node(state)
-    state.update(resolver_result)
-
-    if not state.get("project_id"):
-        raise HTTPException(status_code=400, detail="Could not identify a project. Please specify project_id or mention the project name in your message.")
+    if not state.get("channel_id"):
+        raise HTTPException(status_code=400, detail="Could not identify a channel. Please specify channel_id in your request.")
 
     # Create session now if it was resolved from the message
     if not session_id:
-        session = await sessions_store.create_session(state["project_id"])
+        session = await sessions_store.create_session(state["channel_id"])
         session_id = session["id"]
 
     extractor_result = await asyncio.to_thread(extractor_node, state)
@@ -393,9 +368,9 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
     )
 
 
-@router.post("/projects/{project_id}/import")
+@router.post("/channels/{channel_id}/import")
 async def import_embedded_json(
-    project_id: str,
+    channel_id: str,
     file: UploadFile = File(...),
 ) -> dict[str, int]:
     if not file.filename or not file.filename.endswith(".json"):
@@ -422,13 +397,13 @@ async def import_embedded_json(
                 detail=f"Chunk at index {i} is missing 'chunk_id' or 'chunk_text_embedded'.",
             )
 
-    result = chroma_store.import_chunks(project_id=project_id, chunks=chunks)
+    result = chroma_store.import_chunks(channel_id=channel_id, chunks=chunks)
     return result
 
 
-@router.delete("/projects/{project_id}", status_code=204)
-async def delete_project(project_id: str) -> None:
+@router.delete("/channels/{channel_id}", status_code=204)
+async def delete_channel_nocontent(channel_id: str) -> None:
     try:
-        chroma_store.delete_project(project_id)
+        chroma_store.delete_channel(channel_id)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Project not found: {exc}") from exc
+        raise HTTPException(status_code=404, detail=f"Channel not found: {exc}") from exc

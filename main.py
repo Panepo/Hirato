@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
         await stop_bot(telegram_app)
 
 
-app = FastAPI(title="LLM Project Secretary", lifespan=lifespan)
+app = FastAPI(title="Hirato Secretary", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -12,7 +12,7 @@ wheels = [
 ]
 
 [[package]]
-name = "hirato"
+name = "hirato-secretary"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -23,7 +23,7 @@ class SQLiteSessionStore:
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
                     id         TEXT PRIMARY KEY,
-                    project_id TEXT NOT NULL,
+                    channel_id TEXT NOT NULL,
                     title      TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -41,8 +41,14 @@ class SQLiteSessionStore:
                 )
                 """
             )
+            # Migration: add channel_id column if it was created without it
+            async with db.execute("PRAGMA table_info(sessions)") as cursor:
+                columns = {row[1] for row in await cursor.fetchall()}
+            if "channel_id" not in columns:
+                await db.execute("ALTER TABLE sessions ADD COLUMN channel_id TEXT NOT NULL DEFAULT ''")
+
             await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id, updated_at DESC)"
+                "CREATE INDEX IF NOT EXISTS idx_sessions_channel ON sessions(channel_id, updated_at DESC)"
             )
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp ASC)"
@@ -53,23 +59,23 @@ class SQLiteSessionStore:
     # Sessions
     # ------------------------------------------------------------------
 
-    async def create_session(self, project_id: str) -> dict[str, Any]:
+    async def create_session(self, channel_id: str) -> dict[str, Any]:
         session_id = str(uuid.uuid4())
         now = _now_iso()
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
-                "INSERT INTO sessions(id, project_id, title, created_at, updated_at) VALUES (?,?,?,?,?)",
-                (session_id, project_id, None, now, now),
+                "INSERT INTO sessions(id, channel_id, title, created_at, updated_at) VALUES (?,?,?,?,?)",
+                (session_id, channel_id, None, now, now),
             )
             await db.commit()
-        return {"id": session_id, "project_id": project_id, "title": None, "created_at": now, "updated_at": now}
+        return {"id": session_id, "channel_id": channel_id, "title": None, "created_at": now, "updated_at": now}
 
-    async def list_sessions(self, project_id: str) -> list[dict[str, Any]]:
+    async def list_sessions(self, channel_id: str) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT id, project_id, title, created_at, updated_at FROM sessions WHERE project_id=? ORDER BY updated_at DESC",
-                (project_id,),
+                "SELECT id, channel_id, title, created_at, updated_at FROM sessions WHERE channel_id=? ORDER BY updated_at DESC",
+                (channel_id,),
             ) as cursor:
                 rows = await cursor.fetchall()
         return [dict(r) for r in rows]
@@ -78,7 +84,7 @@ class SQLiteSessionStore:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT id, project_id, title, created_at, updated_at FROM sessions WHERE id=?",
+                "SELECT id, channel_id, title, created_at, updated_at FROM sessions WHERE id=?",
                 (session_id,),
             ) as cursor:
                 row = await cursor.fetchone()

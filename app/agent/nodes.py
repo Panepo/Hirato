@@ -9,7 +9,6 @@ from langchain_ollama import ChatOllama
 
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, SPLITTER_PROMPT
 from app.core.config import settings
-from app.memory.project_cache import project_cache
 from app.memory.store import chroma_store
 
 # ---------------------------------------------------------------------------
@@ -46,12 +45,10 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
         intents: list[str] = data.get("intents", [])
         report_segment: str | None = data.get("report_segment") or None
         question_segment: str | None = data.get("question_segment") or None
-        project_hint: str | None = data.get("project_hint") or None
     except (json.JSONDecodeError, AttributeError):
         intents = []
         report_segment = None
         question_segment = None
-        project_hint = None
 
     # Reconcile: remove an intent when its segment is missing
     if "progress_report" in intents and not report_segment:
@@ -68,28 +65,7 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
         "intents": intents,
         "report_segment": report_segment,
         "question_segment": question_segment,
-        "project_hint": project_hint,
     }
-
-
-async def project_resolver_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Resolve project_hint → project_id when no project_id was provided.
-
-    Only overrides an empty project_id; an explicit selection from the UI
-    is always respected.
-    """
-    if state.get("project_id"):
-        return {}  # already set — nothing to do
-
-    hint: str | None = state.get("project_hint")
-    if not hint:
-        return {}
-
-    match = await project_cache.resolve(hint)
-    if match:
-        return {"project_id": match["code"] or match["name"]}
-
-    return {}
 
 
 def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -110,17 +86,17 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
     """Persist report segment + extracted summary into ChromaDB."""
     if "progress_report" not in state.get("intents", []):
         return {}
-    project_id: str = state["project_id"]
+    channel_id: str = state["channel_id"]
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
 
     chroma_store.add_memory(
-        project_id=project_id,
+        channel_id=channel_id,
         content=report_text,
         metadata={"date": today, "type": "raw"},
     )
     chroma_store.add_memory(
-        project_id=project_id,
+        channel_id=channel_id,
         content=state.get("extracted_summary", ""),
         metadata={"date": today, "type": "summary"},
     )
@@ -131,9 +107,9 @@ def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     """Retrieve relevant documents from ChromaDB using the question segment."""
     if "question" not in state.get("intents", []):
         return {}
-    project_id: str = state["project_id"]
+    channel_id: str = state["channel_id"]
     query: str = state.get("question_segment") or state["messages"][-1]
-    docs = chroma_store.search_memory(project_id=project_id, query=query, n_results=5)
+    docs = chroma_store.search_memory(channel_id=channel_id, query=query, n_results=5)
     return {"retrieved_docs": docs}
 
 
@@ -145,7 +121,7 @@ def answer_node(state: dict[str, Any]) -> dict[str, Any]:
     docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
 
     if not docs:
-        context_text = "(No relevant memories found for this project.)"
+        context_text = "(No relevant memories found for this channel.)"
     else:
         parts: list[str] = []
         for i, doc in enumerate(docs, start=1):
@@ -183,7 +159,7 @@ async def answer_node_astream(state: dict[str, Any]) -> AsyncGenerator[str, None
     docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
 
     if not docs:
-        context_text = "(No relevant memories found for this project.)"
+        context_text = "(No relevant memories found for this channel.)"
     else:
         parts: list[str] = []
         for i, doc in enumerate(docs, start=1):

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hirato LLM Project Secretary</title>
+  <title>Hirato LLM Secretary</title>
   <style>
     *,
     *::before,
@@ -52,18 +52,18 @@
       cursor: pointer;
     }
 
-    #project-select {
+    #channel-select {
       background: #334155;
       color: #f8fafc;
       min-width: 160px;
     }
 
-    #btn-new-project {
+    #btn-new-channel {
       background: #3b82f6;
       color: #fff;
     }
 
-    #btn-new-project:hover {
+    #btn-new-channel:hover {
       background: #2563eb;
     }
 
@@ -76,16 +76,16 @@
       background: #059669;
     }
 
-    #btn-delete-project {
+    #btn-delete-channel {
       background: #ef4444;
       color: #fff;
     }
 
-    #btn-delete-project:hover {
+    #btn-delete-channel:hover {
       background: #dc2626;
     }
 
-    #btn-delete-project:disabled {
+    #btn-delete-channel:disabled {
       background: #fca5a5;
       cursor: default;
     }
@@ -703,18 +703,33 @@
       overflow-y: auto;
       color: #1a1a1a;
     }
+
+    .memory-detail-edit-area {
+      width: 100%;
+      min-height: 200px;
+      max-height: 380px;
+      border: 1.5px solid #3b82f6;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      line-height: 1.65;
+      font-family: inherit;
+      resize: vertical;
+      color: #1a1a1a;
+      box-sizing: border-box;
+    }
   </style>
 
 <body>
 
   <!-- Top bar -->
   <div id="topbar">
-    <h1>Hirato LLM Project Secretary</h1>
-    <select id="project-select">
-      <option value="">— select project —</option>
+    <h1>Hirato LLM Secretary</h1>
+    <select id="channel-select">
+      <option value="">— select channel —</option>
     </select>
-    <button id="btn-new-project">+ New Project</button>
-    <button id="btn-delete-project" disabled>🗑 Delete Project</button>
+    <button id="btn-new-channel">+ New Channel</button>
+    <button id="btn-delete-channel" disabled>🗑 Delete Channel</button>
     <button id="btn-browse-memory" disabled style="background:#6366f1;color:#fff;">🗂 Memory</button>
     <button id="btn-import">⬆ Import JSON</button>
   </div>
@@ -745,10 +760,10 @@
   <!-- Toast -->
   <div id="toast"></div>
 
-  <!-- New Project Modal -->
+  <!-- New Channel Modal -->
   <div class="modal-backdrop" id="modal-backdrop">
     <div class="modal">
-      <h2>New Project</h2>
+      <h2>New Channel</h2>
       <div id="modal-search-row">
         <input id="modal-search" type="text" placeholder="Search Shiratsuyu project name…" />
         <button id="modal-search-btn">Search</button>
@@ -768,6 +783,8 @@
 
   <!-- Hidden file input for JSON import -->
   <input type="file" id="file-input" accept=".json" style="display:none" />
+  <!-- Hidden file input for memory browser import -->
+  <input type="file" id="memory-file-input" accept=".json" style="display:none" />
 
   <!-- Memory Browser Modal -->
   <div class="modal-backdrop" id="memory-modal-backdrop">
@@ -780,9 +797,11 @@
           <span id="memory-count"></span>
         </div>
         <div id="memory-loading" style="display:none">Loading…</div>
-        <div id="memory-empty" style="display:none">No memories stored for this project.</div>
+        <div id="memory-empty" style="display:none">No memories stored for this channel.</div>
         <div id="memory-list" class="memory-list" style="display:none"></div>
         <div class="modal-actions">
+          <button id="memory-import-btn" style="background:#f59e0b;color:#fff;">&#8679; Import</button>
+          <button id="memory-export-btn" style="background:#10b981;color:#fff;">&#8681; Export</button>
           <button id="memory-modal-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
         </div>
       </div>
@@ -796,8 +815,13 @@
         </div>
         <div id="memory-detail-meta" class="memory-item-meta"></div>
         <div id="memory-detail-content" class="memory-detail-content"></div>
+        <textarea id="memory-detail-edit-area" class="memory-detail-edit-area" style="display:none;"
+          rows="10"></textarea>
         <div class="modal-actions">
           <button id="memory-detail-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
+          <button id="memory-detail-edit" style="background:#6366f1;color:#fff;">&#9998; Edit</button>
+          <button id="memory-detail-save" style="display:none;background:#3b82f6;color:#fff;">Save</button>
+          <button id="memory-detail-cancel-edit" style="display:none;background:#e2e8f0;color:#1a1a1a;">Cancel</button>
         </div>
       </div>
 
@@ -808,9 +832,9 @@
     const chatArea = document.getElementById('chat-area');
     const msgInput = document.getElementById('msg-input');
     const btnSend = document.getElementById('btn-send');
-    const projectSelect = document.getElementById('project-select');
-    const btnNew = document.getElementById('btn-new-project');
-    const btnDeleteProject = document.getElementById('btn-delete-project');
+    const channelSelect = document.getElementById('channel-select');
+    const btnNew = document.getElementById('btn-new-channel');
+    const btnDeleteChannel = document.getElementById('btn-delete-channel');
     const btnImport = document.getElementById('btn-import');
     const toast = document.getElementById('toast');
     const modalBackdrop = document.getElementById('modal-backdrop');
@@ -841,9 +865,17 @@
     const memoryDetailMeta = document.getElementById('memory-detail-meta');
     const memoryDetailContent = document.getElementById('memory-detail-content');
     const memoryDetailClose = document.getElementById('memory-detail-close');
+    const memoryDetailEdit = document.getElementById('memory-detail-edit');
+    const memoryDetailSave = document.getElementById('memory-detail-save');
+    const memoryDetailCancelEdit = document.getElementById('memory-detail-cancel-edit');
+    const memoryDetailEditArea = document.getElementById('memory-detail-edit-area');
+    const btnMemoryExport = document.getElementById('memory-export-btn');
+    const btnMemoryImport = document.getElementById('memory-import-btn');
+    const memoryFileInput = document.getElementById('memory-file-input');
 
     // ---- State ----
     let currentSessionId = null;
+    let _currentDetailItem = null;
 
     // ---- Toast ----
     let _toastTimer;
@@ -868,11 +900,11 @@
     }
 
     // ---- Sessions ----
-    async function loadSessions(projectId) {
+    async function loadSessions(channelId) {
       sessionList.innerHTML = '';
-      if (!projectId) return;
+      if (!channelId) return;
       try {
-        const res = await fetch(`api/sessions?project_id=${encodeURIComponent(projectId)}`);
+        const res = await fetch(`api/sessions?channel_id=${encodeURIComponent(channelId)}`);
         const sessions = await res.json();
         sessions.forEach(s => renderSessionEntry(s));
       } catch (e) { showToast('Failed to load sessions.'); }
@@ -932,13 +964,13 @@
     }
 
     async function newChat() {
-      const projectId = projectSelect.value;
-      if (!projectId) { showToast('Select a project first.'); return; }
+      const channelId = channelSelect.value;
+      if (!channelId) { showToast('Select a channel first.'); return; }
       try {
         const res = await fetch('api/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ project_id: projectId }),
+          body: JSON.stringify({ channel_id: channelId }),
         });
         const session = await res.json();
         currentSessionId = session.id;
@@ -1002,33 +1034,33 @@
 
     btnNewChat.addEventListener('click', newChat);
 
-    // ---- Projects ----
-    async function loadProjects() {
+    // ---- Channels ----
+    async function loadChannels() {
       try {
-        const res = await fetch('api/projects');
-        const projects = await res.json();
-        const current = projectSelect.value;
-        projectSelect.innerHTML = '<option value="">— select project —</option>';
-        projects.forEach(p => {
+        const res = await fetch('api/channels');
+        const channels = await res.json();
+        const current = channelSelect.value;
+        channelSelect.innerHTML = '<option value="">— select channel —</option>';
+        channels.forEach(c => {
           const opt = document.createElement('option');
-          opt.value = p; opt.textContent = p;
-          if (p === current) opt.selected = true;
-          projectSelect.appendChild(opt);
+          opt.value = c; opt.textContent = c;
+          if (c === current) opt.selected = true;
+          channelSelect.appendChild(opt);
         });
-      } catch (e) { showToast('Failed to load projects.'); }
+      } catch (e) { showToast('Failed to load channels.'); }
     }
-    loadProjects();
+    loadChannels();
 
-    projectSelect.addEventListener('change', () => {
-      btnDeleteProject.disabled = !projectSelect.value;
-      btnBrowseMemory.disabled = !projectSelect.value;
+    channelSelect.addEventListener('change', () => {
+      btnDeleteChannel.disabled = !channelSelect.value;
+      btnBrowseMemory.disabled = !channelSelect.value;
       currentSessionId = null;
       chatArea.innerHTML = '';
-      loadSessions(projectSelect.value);
+      loadSessions(channelSelect.value);
     });
 
-    // ---- New Project Modal ----
-    let _selectedProject = null; // { code, name }
+    // ---- New Channel Modal ----
+    let _selectedChannel = null; // { code, name }
 
     function resetModal() {
       modalSearch.value = '';
@@ -1037,11 +1069,11 @@
       modalSelectedRow.style.display = 'none';
       modalSelectedName.textContent = '';
       modalCreate.disabled = true;
-      _selectedProject = null;
+      _selectedChannel = null;
     }
 
     function selectCandidate(code, name, el) {
-      _selectedProject = { code, name };
+      _selectedChannel = { code, name };
       modalCandidatesList.querySelectorAll('.modal-candidate').forEach(c => c.classList.remove('selected'));
       el.classList.add('selected');
       modalSelectedName.textContent = code ? `${code} — ${name}` : name;
@@ -1058,14 +1090,14 @@
       modalCandidatesList.innerHTML = '';
       modalSelectedRow.style.display = 'none';
       modalCreate.disabled = true;
-      _selectedProject = null;
+      _selectedChannel = null;
       try {
         const res = await fetch(`api/shiratsuyu/projects?q=${encodeURIComponent(q)}`);
         if (!res.ok) throw new Error(await res.text());
         const results = await res.json();
         modalCandidates.style.display = '';
         if (!results.length) {
-          modalCandidatesList.innerHTML = '<div id="modal-no-results">No matching projects found.</div>';
+          modalCandidatesList.innerHTML = '<div id="modal-no-results">No matching channels found.</div>';
         } else {
           results.forEach(({ code, name }) => {
             const item = document.createElement('div');
@@ -1101,10 +1133,10 @@
     modalSearchBtn.addEventListener('click', doSearch);
 
     modalCreate.addEventListener('click', async () => {
-      if (!_selectedProject) return;
-      const name = `${_selectedProject.code} — ${_selectedProject.name}`.trim();
+      if (!_selectedChannel) return;
+      const name = `${_selectedChannel.code} — ${_selectedChannel.name}`.trim();
       try {
-        const res = await fetch('api/projects', {
+        const res = await fetch('api/channels', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name }),
@@ -1112,16 +1144,18 @@
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         modalBackdrop.classList.remove('open');
-        await loadProjects();
-        projectSelect.value = data.project_id;
-        btnDeleteProject.disabled = false;
-        loadSessions(data.project_id);
-        showToast(`Project "${data.project_id}" created.`);
+        await loadChannels();
+        channelSelect.value = data.channel_id;
+        btnDeleteChannel.disabled = false;
+        loadSessions(data.channel_id);
+        showToast(`Channel "${data.channel_id}" created.`);
       } catch (e) { showToast(`Error: ${e.message}`); }
     });
 
     // ---- Memory Browser ----
     function openMemoryDetail(item) {
+      _currentDetailItem = item;
+      exitEditMode();
       const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
       memoryDetailBadge.className = `memory-type-badge ${typeClass}`;
       memoryDetailBadge.textContent = item.type || 'unknown';
@@ -1137,6 +1171,7 @@
     }
 
     function closeMemoryDetail() {
+      exitEditMode();
       memoryDetailView.style.display = 'none';
       memoryListView.style.display = '';
     }
@@ -1178,10 +1213,10 @@
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm('Delete this memory entry? This cannot be undone.')) return;
-        const projectId = projectSelect.value;
+        const channelId = channelSelect.value;
         try {
           const res = await fetch(
-            `api/projects/${encodeURIComponent(projectId)}/memories/${encodeURIComponent(item.id)}`,
+            `api/channels/${encodeURIComponent(channelId)}/memories/${encodeURIComponent(item.id)}`,
             { method: 'DELETE' }
           );
           if (!res.ok) {
@@ -1248,8 +1283,8 @@
     }
 
     async function openMemoryBrowser() {
-      const projectId = projectSelect.value;
-      if (!projectId) return;
+      const channelId = channelSelect.value;
+      if (!channelId) return;
 
       // Reset to list view
       memoryDetailView.style.display = 'none';
@@ -1262,7 +1297,7 @@
       memoryModalBackdrop.classList.add('open');
 
       try {
-        const res = await fetch(`api/projects/${encodeURIComponent(projectId)}/memories`);
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/memories`);
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.detail || res.statusText);
@@ -1272,10 +1307,10 @@
         if (items.length === 0) {
           memoryEmpty.style.display = '';
         } else {
-          const projectItems = items.filter(i => i.type === 'raw' || i.type === 'summary');
+          const channelItems = items.filter(i => i.type === 'raw' || i.type === 'summary');
           const refItems = items.filter(i => i.type === 'reference_doc');
           const otherItems = items.filter(i => !['raw', 'summary', 'reference_doc'].includes(i.type));
-          if (projectItems.length > 0) memoryList.appendChild(renderMemoryGroup('Project Memory', projectItems));
+          if (channelItems.length > 0) memoryList.appendChild(renderMemoryGroup('Channel Memory', channelItems));
           if (refItems.length > 0) memoryList.appendChild(renderMemoryGroup('Reference Docs', refItems));
           if (otherItems.length > 0) memoryList.appendChild(renderMemoryGroup('Other', otherItems));
           memoryList.style.display = '';
@@ -1294,6 +1329,125 @@
       // Reset to list view for next open
       memoryDetailView.style.display = 'none';
       memoryListView.style.display = '';
+      exitEditMode();
+    }
+
+    // ---- Memory Edit ----
+    function enterEditMode(item) {
+      if (!item) return;
+      memoryDetailContent.style.display = 'none';
+      memoryDetailEditArea.value = item.content || '';
+      memoryDetailEditArea.style.display = '';
+      memoryDetailEdit.style.display = 'none';
+      memoryDetailSave.style.display = '';
+      memoryDetailCancelEdit.style.display = '';
+    }
+
+    function exitEditMode() {
+      memoryDetailContent.style.display = '';
+      memoryDetailEditArea.style.display = 'none';
+      memoryDetailEdit.style.display = '';
+      memoryDetailSave.style.display = 'none';
+      memoryDetailCancelEdit.style.display = 'none';
+    }
+
+    async function saveMemoryEdit() {
+      const channelId = channelSelect.value;
+      if (!_currentDetailItem || !channelId) return;
+      const newContent = memoryDetailEditArea.value.trim();
+      if (!newContent) { showToast('Content cannot be empty.'); return; }
+      memoryDetailSave.disabled = true;
+      try {
+        const res = await fetch(
+          `api/channels/${encodeURIComponent(channelId)}/memories/${encodeURIComponent(_currentDetailItem.id)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: newContent }),
+          }
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+        memoryDetailContent.textContent = newContent;
+        _currentDetailItem.content = newContent;
+        _currentDetailItem.preview = newContent.slice(0, 150);
+        const row = memoryList.querySelector(`[data-id="${_currentDetailItem.id}"]`);
+        if (row) {
+          const preview = row.querySelector('.memory-item-preview');
+          if (preview) preview.textContent = newContent.slice(0, 150);
+        }
+        exitEditMode();
+        showToast('Memory updated.');
+      } catch (e) {
+        showToast(`Save failed: ${e.message}`);
+      } finally {
+        memoryDetailSave.disabled = false;
+      }
+    }
+
+    // ---- Memory Export ----
+    async function exportMemories() {
+      const channelId = channelSelect.value;
+      if (!channelId) return;
+      try {
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/memories`);
+        if (!res.ok) throw new Error('Failed to fetch memories');
+        const items = await res.json();
+        const exportData = {
+          channel_id: channelId,
+          exported_at: new Date().toISOString(),
+          memories: items,
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${channelId}-memories.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Exported ${items.length} memor${items.length !== 1 ? 'ies' : 'y'}.`);
+      } catch (e) {
+        showToast(`Export failed: ${e.message}`);
+      }
+    }
+
+    // ---- Memory Import (browser) ----
+    async function handleMemoryImport(file) {
+      const channelId = channelSelect.value;
+      if (!channelId || !file) return;
+      let data;
+      try {
+        data = JSON.parse(await file.text());
+      } catch {
+        showToast('Invalid JSON file.');
+        return;
+      }
+      const memories = data.memories;
+      if (!Array.isArray(memories)) {
+        showToast('Invalid format: expected a "memories" array.');
+        return;
+      }
+      try {
+        showToast('Importing…');
+        const res = await fetch(
+          `api/channels/${encodeURIComponent(channelId)}/memories/import`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memories }),
+          }
+        );
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.detail || JSON.stringify(result));
+        showToast(`Imported: ${result.imported}, Skipped: ${result.skipped}`);
+        openMemoryBrowser();
+      } catch (e) {
+        showToast(`Import failed: ${e.message}`);
+      }
     }
 
     btnBrowseMemory.addEventListener('click', openMemoryBrowser);
@@ -1303,43 +1457,49 @@
     memoryModalBackdrop.addEventListener('click', e => {
       if (e.target === memoryModalBackdrop) closeMemoryModal();
     });
+    memoryDetailEdit.addEventListener('click', () => enterEditMode(_currentDetailItem));
+    memoryDetailSave.addEventListener('click', saveMemoryEdit);
+    memoryDetailCancelEdit.addEventListener('click', exitEditMode);
+    btnMemoryExport.addEventListener('click', exportMemories);
+    btnMemoryImport.addEventListener('click', () => { memoryFileInput.value = ''; memoryFileInput.click(); });
+    memoryFileInput.addEventListener('change', () => { const f = memoryFileInput.files[0]; if (f) handleMemoryImport(f); });
 
-    // ---- Delete Project ----
-    btnDeleteProject.addEventListener('click', async () => {
-      const projectId = projectSelect.value;
-      if (!projectId) return;
-      if (!confirm(`Delete project "${projectId}" and all its memories? This cannot be undone.`)) return;
+    // ---- Delete Channel ----
+    btnDeleteChannel.addEventListener('click', async () => {
+      const channelId = channelSelect.value;
+      if (!channelId) return;
+      if (!confirm(`Delete channel "${channelId}" and all its memories? This cannot be undone.`)) return;
       try {
-        const res = await fetch(`api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.detail || res.statusText);
         }
-        await loadProjects();
-        projectSelect.value = '';
-        btnDeleteProject.disabled = true;
+        await loadChannels();
+        channelSelect.value = '';
+        btnDeleteChannel.disabled = true;
         chatArea.innerHTML = '';
         currentSessionId = null;
         sessionList.innerHTML = '';
-        showToast(`Project "${projectId}" deleted.`);
+        showToast(`Channel "${channelId}" deleted.`);
       } catch (e) { showToast(`Delete failed: ${e.message}`); }
     });
 
     // ---- Import JSON ----
     btnImport.addEventListener('click', () => {
-      if (!projectSelect.value) { showToast('Select a project first.'); return; }
+      if (!channelSelect.value) { showToast('Select a channel first.'); return; }
       fileInput.value = '';
       fileInput.click();
     });
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0];
       if (!file) return;
-      const projectId = projectSelect.value;
+      const channelId = channelSelect.value;
       const form = new FormData();
       form.append('file', file);
       try {
         showToast('Importing…');
-        const res = await fetch(`api/projects/${encodeURIComponent(projectId)}/import`, {
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/import`, {
           method: 'POST', body: form,
         });
         const data = await res.json();
@@ -1371,9 +1531,9 @@
 
     async function sendMessage() {
       const msg = msgInput.value.trim();
-      const projectId = projectSelect.value;
+      const channelId = channelSelect.value;
       if (!msg) return;
-      if (!projectId) { showToast('Select or create a project first.'); return; }
+      if (!channelId) { showToast('Select or create a channel first.'); return; }
 
       // Auto-create session if none active
       if (!currentSessionId) {
@@ -1381,7 +1541,7 @@
           const res = await fetch('api/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId }),
+            body: JSON.stringify({ channel_id: channelId }),
           });
           const session = await res.json();
           currentSessionId = session.id;
@@ -1410,7 +1570,7 @@
         const res = await fetch('api/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: msg, project_id: projectId, session_id: currentSessionId }),
+          body: JSON.stringify({ message: msg, channel_id: channelId, session_id: currentSessionId }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));

@@ -15,11 +15,11 @@ class Settings(BaseSettings):
 
     PORT: int = 7950
 
-    SHIRATSUYU_URL: str = "https://srddadmin.getac.com.tw:4001"
-    SHIRATSUYU_BEARER: str = ""
-
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ACCESS_CODE: str = ""
+
+    SHIRATSUYU_URL: str = ""
+    SHIRATSUYU_BEARER: str = ""
 
 
 settings = Settings()
