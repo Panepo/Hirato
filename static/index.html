@@ -770,56 +770,58 @@
       <div class="modal-actions">
         <button id="modal-cancel">Cancel</button>
         <button id="modal-create">Create</button>
+      </div>
 
-        <!-- Hidden file input for JSON import -->
-        <input type="file" id="file-input" accept=".json" style="display:none" />
-        <!-- Hidden file input for memory browser import -->
-        <input type="file" id="memory-file-input" accept=".json" style="display:none" />
+      <!-- Hidden file inputs -->
+      <input type="file" id="file-input" accept=".json" style="display:none" />
+      <input type="file" id="memory-file-input" accept=".json" style="display:none" />
+    </div>
+  </div>
 
-        <!-- Memory Browser Modal -->
-        <div class="modal-backdrop" id="memory-modal-backdrop">
-          <div class="modal" id="memory-modal">
+  <!-- Memory Browser Modal (siblings must not be nested inside other modal-backdrop) -->
+  <div class="modal-backdrop" id="memory-modal-backdrop">
+    <div class="modal" id="memory-modal">
 
-            <!-- List view -->
-            <div id="memory-list-view">
-              <div id="memory-header">
-                <h2>Memory Browser</h2>
-                <span id="memory-count"></span>
-              </div>
-              <div id="memory-loading" style="display:none">Loading…</div>
-              <div id="memory-empty" style="display:none">No memories stored for this channel.</div>
-              <div id="memory-list" class="memory-list" style="display:none"></div>
-              <div class="modal-actions">
-                <button id="memory-import-btn" style="background:#f59e0b;color:#fff;">&#8679; Import</button>
-                <button id="memory-export-btn" style="background:#10b981;color:#fff;">&#8681; Export</button>
-                <button id="memory-modal-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
-              </div>
-            </div>
-
-            <!-- Detail view -->
-            <div id="memory-detail-view" style="display:none">
-              <div id="memory-detail-header">
-                <button id="memory-detail-back">← Back</button>
-                <span id="memory-detail-badge" class="memory-type-badge"></span>
-                <span id="memory-detail-id"></span>
-              </div>
-              <div id="memory-detail-meta" class="memory-item-meta"></div>
-              <div id="memory-detail-content" class="memory-detail-content"></div>
-              <textarea id="memory-detail-edit-area" class="memory-detail-edit-area" style="display:none;"
-                rows="10"></textarea>
-              <div class="modal-actions">
-                <button id="memory-detail-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
-                <button id="memory-detail-edit" style="background:#6366f1;color:#fff;">&#9998; Edit</button>
-                <button id="memory-detail-save" style="display:none;background:#3b82f6;color:#fff;">Save</button>
-                <button id="memory-detail-cancel-edit"
-                  style="display:none;background:#e2e8f0;color:#1a1a1a;">Cancel</button>
-              </div>
-            </div>
-
-          </div>
+      <!-- List view -->
+      <div id="memory-list-view">
+        <div id="memory-header">
+          <h2>Memory Browser</h2>
+          <span id="memory-count"></span>
         </div>
+        <div id="memory-loading" style="display:none">Loading…</div>
+        <div id="memory-empty" style="display:none">No memories stored for this channel.</div>
+        <div id="memory-list" class="memory-list" style="display:none"></div>
+        <div class="modal-actions">
+          <button id="memory-import-btn" style="background:#f59e0b;color:#fff;">&#8679; Import</button>
+          <button id="memory-export-btn" style="background:#10b981;color:#fff;">&#8681; Export</button>
+          <button id="memory-modal-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
+        </div>
+      </div>
 
-        <script>
+      <!-- Detail view -->
+      <div id="memory-detail-view" style="display:none">
+        <div id="memory-detail-header">
+          <button id="memory-detail-back">← Back</button>
+          <span id="memory-detail-badge" class="memory-type-badge"></span>
+          <span id="memory-detail-id"></span>
+        </div>
+        <div id="memory-detail-meta" class="memory-item-meta"></div>
+        <div id="memory-detail-content" class="memory-detail-content"></div>
+        <textarea id="memory-detail-edit-area" class="memory-detail-edit-area" style="display:none;"
+          rows="10"></textarea>
+        <div class="modal-actions">
+          <button id="memory-detail-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
+          <button id="memory-detail-edit" style="background:#6366f1;color:#fff;">&#9998; Edit</button>
+          <button id="memory-detail-save" style="display:none;background:#3b82f6;color:#fff;">Save</button>
+          <button id="memory-detail-cancel-edit"
+            style="display:none;background:#e2e8f0;color:#1a1a1a;">Cancel</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
           const chatArea = document.getElementById('chat-area');
           const msgInput = document.getElementById('msg-input');
           const btnSend = document.getElementById('btn-send');
