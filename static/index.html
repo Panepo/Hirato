@@ -217,11 +217,56 @@
     .bubble {
       max-width: 72%;
       padding: 0.65rem 1rem;
+      position: relative;
       border-radius: 12px;
       line-height: 1.5;
       font-size: 0.9rem;
-      white-space: pre-wrap;
       word-break: break-word;
+    }
+
+    .bubble-content {
+      white-space: pre-wrap;
+      min-height: 1.2em;
+    }
+
+    .bubble-copy-btn {
+      position: absolute;
+      opacity: 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 3px 5px;
+      font-size: 0.8rem;
+      border-radius: 4px;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .bubble.user .bubble-copy-btn {
+      color: #bfdbfe;
+      bottom: 6px;
+      right: 8px;
+    }
+
+    .bubble.secretary .bubble-copy-btn {
+      color: #94a3b8;
+      bottom: 6px;
+      right: 8px;
+    }
+
+    .bubble:hover .bubble-copy-btn {
+      opacity: 1;
+    }
+
+    .bubble-copy-btn:hover {
+      background: rgba(0, 0, 0, 0.08);
+    }
+
+    .bubble.user .bubble-copy-btn:hover {
+      color: #93c5fd;
+    }
+
+    .bubble.secretary .bubble-copy-btn:hover {
+      color: #475569;
     }
 
     .bubble.user {
@@ -239,7 +284,7 @@
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     }
 
-    .bubble.thinking {
+    .bubble.thinking .bubble-content {
       opacity: 0.6;
       font-style: italic;
     }
@@ -813,8 +858,7 @@
           <button id="memory-detail-close" style="background:#e2e8f0;color:#1a1a1a;">Close</button>
           <button id="memory-detail-edit" style="background:#6366f1;color:#fff;">&#9998; Edit</button>
           <button id="memory-detail-save" style="display:none;background:#3b82f6;color:#fff;">Save</button>
-          <button id="memory-detail-cancel-edit"
-            style="display:none;background:#e2e8f0;color:#1a1a1a;">Cancel</button>
+          <button id="memory-detail-cancel-edit" style="display:none;background:#e2e8f0;color:#1a1a1a;">Cancel</button>
         </div>
       </div>
 
@@ -822,768 +866,785 @@
   </div>
 
   <script>
-          const chatArea = document.getElementById('chat-area');
-          const msgInput = document.getElementById('msg-input');
-          const btnSend = document.getElementById('btn-send');
-          const channelSelect = document.getElementById('channel-select');
-          const btnNew = document.getElementById('btn-new-channel');
-          const btnDeleteChannel = document.getElementById('btn-delete-channel');
-          const btnImport = document.getElementById('btn-import');
-          const toast = document.getElementById('toast');
-          const modalBackdrop = document.getElementById('modal-backdrop');
-          const modalCancel = document.getElementById('modal-cancel');
-          const modalCreate = document.getElementById('modal-create');
-          const modalChannelName = document.getElementById('modal-channel-name');
-          const fileInput = document.getElementById('file-input');
-          const btnNewChat = document.getElementById('btn-new-chat');
-          const sessionList = document.getElementById('session-list');
+    const chatArea = document.getElementById('chat-area');
+    const msgInput = document.getElementById('msg-input');
+    const btnSend = document.getElementById('btn-send');
+    const channelSelect = document.getElementById('channel-select');
+    const btnNew = document.getElementById('btn-new-channel');
+    const btnDeleteChannel = document.getElementById('btn-delete-channel');
+    const btnImport = document.getElementById('btn-import');
+    const toast = document.getElementById('toast');
+    const modalBackdrop = document.getElementById('modal-backdrop');
+    const modalCancel = document.getElementById('modal-cancel');
+    const modalCreate = document.getElementById('modal-create');
+    const modalChannelName = document.getElementById('modal-channel-name');
+    const fileInput = document.getElementById('file-input');
+    const btnNewChat = document.getElementById('btn-new-chat');
+    const sessionList = document.getElementById('session-list');
 
-          const btnBrowseMemory = document.getElementById('btn-browse-memory');
-          const memoryModalBackdrop = document.getElementById('memory-modal-backdrop');
-          const memoryList = document.getElementById('memory-list');
-          const memoryCount = document.getElementById('memory-count');
-          const memoryEmpty = document.getElementById('memory-empty');
-          const memoryLoading = document.getElementById('memory-loading');
-          const memoryModalClose = document.getElementById('memory-modal-close');
-          const memoryListView = document.getElementById('memory-list-view');
-          const memoryDetailView = document.getElementById('memory-detail-view');
-          const memoryDetailBack = document.getElementById('memory-detail-back');
-          const memoryDetailBadge = document.getElementById('memory-detail-badge');
-          const memoryDetailId = document.getElementById('memory-detail-id');
-          const memoryDetailMeta = document.getElementById('memory-detail-meta');
-          const memoryDetailContent = document.getElementById('memory-detail-content');
-          const memoryDetailClose = document.getElementById('memory-detail-close');
-          const memoryDetailEdit = document.getElementById('memory-detail-edit');
-          const memoryDetailSave = document.getElementById('memory-detail-save');
-          const memoryDetailCancelEdit = document.getElementById('memory-detail-cancel-edit');
-          const memoryDetailEditArea = document.getElementById('memory-detail-edit-area');
-          const btnMemoryExport = document.getElementById('memory-export-btn');
-          const btnMemoryImport = document.getElementById('memory-import-btn');
-          const memoryFileInput = document.getElementById('memory-file-input');
+    const btnBrowseMemory = document.getElementById('btn-browse-memory');
+    const memoryModalBackdrop = document.getElementById('memory-modal-backdrop');
+    const memoryList = document.getElementById('memory-list');
+    const memoryCount = document.getElementById('memory-count');
+    const memoryEmpty = document.getElementById('memory-empty');
+    const memoryLoading = document.getElementById('memory-loading');
+    const memoryModalClose = document.getElementById('memory-modal-close');
+    const memoryListView = document.getElementById('memory-list-view');
+    const memoryDetailView = document.getElementById('memory-detail-view');
+    const memoryDetailBack = document.getElementById('memory-detail-back');
+    const memoryDetailBadge = document.getElementById('memory-detail-badge');
+    const memoryDetailId = document.getElementById('memory-detail-id');
+    const memoryDetailMeta = document.getElementById('memory-detail-meta');
+    const memoryDetailContent = document.getElementById('memory-detail-content');
+    const memoryDetailClose = document.getElementById('memory-detail-close');
+    const memoryDetailEdit = document.getElementById('memory-detail-edit');
+    const memoryDetailSave = document.getElementById('memory-detail-save');
+    const memoryDetailCancelEdit = document.getElementById('memory-detail-cancel-edit');
+    const memoryDetailEditArea = document.getElementById('memory-detail-edit-area');
+    const btnMemoryExport = document.getElementById('memory-export-btn');
+    const btnMemoryImport = document.getElementById('memory-import-btn');
+    const memoryFileInput = document.getElementById('memory-file-input');
 
-          // ---- State ----
-          let currentSessionId = null;
-          let _currentDetailItem = null;
+    // ---- State ----
+    let currentSessionId = null;
+    let _currentDetailItem = null;
 
-          // ---- Toast ----
-          let _toastTimer;
-          function showToast(msg) {
-            toast.textContent = msg;
-            toast.classList.add('show');
-            clearTimeout(_toastTimer);
-            _toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+    // ---- Toast ----
+    let _toastTimer;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    // ---- Relative date helper ----
+    function relativeDate(isoString) {
+      const ms = Date.now() - new Date(isoString).getTime();
+      const mins = Math.floor(ms / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      if (days < 7) return `${days}d ago`;
+      return new Date(isoString).toLocaleDateString();
+    }
+
+    // ---- Sessions ----
+    async function loadSessions(channelId) {
+      sessionList.innerHTML = '';
+      if (!channelId) return;
+      try {
+        const res = await fetch(`api/sessions?channel_id=${encodeURIComponent(channelId)}`);
+        const sessions = await res.json();
+        sessions.forEach(s => renderSessionEntry(s));
+      } catch (e) { showToast('Failed to load sessions.'); }
+    }
+
+    function renderSessionEntry(session) {
+      const entry = document.createElement('div');
+      entry.className = 'session-entry' + (session.id === currentSessionId ? ' active' : '');
+      entry.dataset.id = session.id;
+
+      const meta = document.createElement('div');
+      meta.className = 'session-meta';
+
+      const title = document.createElement('div');
+      title.className = 'session-title';
+      title.textContent = session.title || 'New conversation';
+
+      const date = document.createElement('div');
+      date.className = 'session-date';
+      date.textContent = relativeDate(session.updated_at);
+
+      meta.appendChild(title);
+      meta.appendChild(date);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-session';
+      delBtn.title = 'Delete conversation';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this conversation?')) return;
+        await deleteSession(session.id);
+      });
+
+      entry.appendChild(meta);
+      entry.appendChild(delBtn);
+      entry.addEventListener('click', () => selectSession(session.id));
+      sessionList.appendChild(entry);
+    }
+
+    function setActiveSessionEntry(sessionId) {
+      sessionList.querySelectorAll('.session-entry').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === sessionId);
+      });
+    }
+
+    async function selectSession(sessionId) {
+      try {
+        const res = await fetch(`api/sessions/${encodeURIComponent(sessionId)}`);
+        if (!res.ok) throw new Error('Session not found');
+        const session = await res.json();
+        currentSessionId = sessionId;
+        setActiveSessionEntry(sessionId);
+        chatArea.innerHTML = '';
+        session.messages.forEach(m => appendBubble(m.content, m.role === 'user' ? 'user' : 'secretary'));
+      } catch (e) { showToast(`Failed to load session: ${e.message}`); }
+    }
+
+    async function newChat() {
+      const channelId = channelSelect.value;
+      if (!channelId) { showToast('Select a channel first.'); return; }
+      try {
+        const res = await fetch('api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel_id: channelId }),
+        });
+        const session = await res.json();
+        currentSessionId = session.id;
+        chatArea.innerHTML = '';
+        // Prepend to sidebar
+        const existing = sessionList.querySelector('.session-entry');
+        const temp = document.createElement('div');
+        renderSessionEntryInto(temp, session);
+        if (existing) sessionList.insertBefore(temp.firstChild, existing);
+        else sessionList.appendChild(temp.firstChild);
+        setActiveSessionEntry(currentSessionId);
+      } catch (e) { showToast(`Error: ${e.message}`); }
+    }
+
+    // Helper used by newChat to build entry DOM without full re-render
+    function renderSessionEntryInto(container, session) {
+      const frag = document.createDocumentFragment();
+      const entry = document.createElement('div');
+      entry.className = 'session-entry active';
+      entry.dataset.id = session.id;
+
+      const meta = document.createElement('div');
+      meta.className = 'session-meta';
+      const title = document.createElement('div');
+      title.className = 'session-title';
+      title.textContent = session.title || 'New conversation';
+      const date = document.createElement('div');
+      date.className = 'session-date';
+      date.textContent = relativeDate(session.updated_at);
+      meta.appendChild(title);
+      meta.appendChild(date);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-session';
+      delBtn.title = 'Delete conversation';
+      delBtn.textContent = '✕';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this conversation?')) return;
+        await deleteSession(session.id);
+      });
+
+      entry.appendChild(meta);
+      entry.appendChild(delBtn);
+      entry.addEventListener('click', () => selectSession(session.id));
+      frag.appendChild(entry);
+      container.appendChild(frag);
+    }
+
+    async function deleteSession(sessionId) {
+      try {
+        await fetch(`api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+        const entry = sessionList.querySelector(`[data-id="${sessionId}"]`);
+        if (entry) entry.remove();
+        if (currentSessionId === sessionId) {
+          currentSessionId = null;
+          chatArea.innerHTML = '';
+        }
+      } catch (e) { showToast(`Delete failed: ${e.message}`); }
+    }
+
+    btnNewChat.addEventListener('click', newChat);
+
+    // ---- Channels ----
+    async function loadChannels() {
+      try {
+        const res = await fetch('api/channels');
+        const channels = await res.json();
+        const current = channelSelect.value;
+        channelSelect.innerHTML = '<option value="">— select channel —</option>';
+        channels.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c; opt.textContent = c;
+          if (c === current) opt.selected = true;
+          channelSelect.appendChild(opt);
+        });
+      } catch (e) { showToast('Failed to load channels.'); }
+    }
+    loadChannels();
+
+    channelSelect.addEventListener('change', () => {
+      btnDeleteChannel.disabled = !channelSelect.value;
+      btnBrowseMemory.disabled = !channelSelect.value;
+      currentSessionId = null;
+      chatArea.innerHTML = '';
+      loadSessions(channelSelect.value);
+    });
+
+    // ---- New Channel Modal ----
+
+    function resetModal() {
+      modalChannelName.value = '';
+    }
+
+    btnNew.addEventListener('click', () => {
+      resetModal();
+      modalBackdrop.classList.add('open');
+      modalChannelName.focus();
+    });
+    modalCancel.addEventListener('click', () => modalBackdrop.classList.remove('open'));
+    modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) modalBackdrop.classList.remove('open'); });
+    modalChannelName.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); modalCreate.click(); } });
+
+    modalCreate.addEventListener('click', async () => {
+      const name = modalChannelName.value.trim();
+      if (!name) return;
+      try {
+        const res = await fetch('api/channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        modalBackdrop.classList.remove('open');
+        await loadChannels();
+        channelSelect.value = data.channel_id;
+        btnDeleteChannel.disabled = false;
+        loadSessions(data.channel_id);
+        showToast(`Channel "${data.channel_id}" created.`);
+      } catch (e) { showToast(`Error: ${e.message}`); }
+    });
+
+    // ---- Memory Browser ----
+    function openMemoryDetail(item) {
+      _currentDetailItem = item;
+      exitEditMode();
+      const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
+      memoryDetailBadge.className = `memory-type-badge ${typeClass}`;
+      memoryDetailBadge.textContent = item.type || 'unknown';
+      memoryDetailId.textContent = item.id;
+      const metaParts = [];
+      if (item.date) metaParts.push(item.date);
+      if (item.source) metaParts.push(item.source);
+      if (item.section) metaParts.push(item.section);
+      memoryDetailMeta.textContent = metaParts.join(' • ');
+      memoryDetailContent.textContent = item.content || '(empty)';
+      memoryListView.style.display = 'none';
+      memoryDetailView.style.display = '';
+    }
+
+    function closeMemoryDetail() {
+      exitEditMode();
+      memoryDetailView.style.display = 'none';
+      memoryListView.style.display = '';
+    }
+
+    function renderMemoryItem(item, groupCountSpan, groupItemsDiv) {
+      const row = document.createElement('div');
+      row.className = 'memory-item';
+      row.dataset.id = item.id;
+
+      const body = document.createElement('div');
+      body.className = 'memory-item-body';
+      body.addEventListener('click', () => openMemoryDetail(item));
+
+      const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
+      const badge = document.createElement('span');
+      badge.className = `memory-type-badge ${typeClass}`;
+      badge.textContent = item.type || 'unknown';
+
+      const preview = document.createElement('div');
+      preview.className = 'memory-item-preview';
+      preview.textContent = item.preview || '(empty)';
+
+      const metaParts = [];
+      if (item.date) metaParts.push(item.date);
+      if (item.source) metaParts.push(item.source);
+      if (item.section) metaParts.push(item.section);
+      const meta = document.createElement('div');
+      meta.className = 'memory-item-meta';
+      meta.textContent = metaParts.join(' • ');
+
+      body.appendChild(badge);
+      body.appendChild(preview);
+      body.appendChild(meta);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-memory';
+      delBtn.title = 'Delete this memory';
+      delBtn.textContent = '\u2715';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete this memory entry? This cannot be undone.')) return;
+        const channelId = channelSelect.value;
+        try {
+          const res = await fetch(
+            `api/channels/${encodeURIComponent(channelId)}/memories/${encodeURIComponent(item.id)}`,
+            { method: 'DELETE' }
+          );
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || res.statusText);
           }
-
-          // ---- Relative date helper ----
-          function relativeDate(isoString) {
-            const ms = Date.now() - new Date(isoString).getTime();
-            const mins = Math.floor(ms / 60000);
-            if (mins < 1) return 'just now';
-            if (mins < 60) return `${mins}m ago`;
-            const hrs = Math.floor(mins / 60);
-            if (hrs < 24) return `${hrs}h ago`;
-            const days = Math.floor(hrs / 24);
-            if (days < 7) return `${days}d ago`;
-            return new Date(isoString).toLocaleDateString();
+          row.remove();
+          if (groupCountSpan && groupItemsDiv) {
+            const groupRemaining = groupItemsDiv.querySelectorAll('.memory-item').length;
+            groupCountSpan.textContent = `${groupRemaining}`;
           }
-
-          // ---- Sessions ----
-          async function loadSessions(channelId) {
-            sessionList.innerHTML = '';
-            if (!channelId) return;
-            try {
-              const res = await fetch(`api/sessions?channel_id=${encodeURIComponent(channelId)}`);
-              const sessions = await res.json();
-              sessions.forEach(s => renderSessionEntry(s));
-            } catch (e) { showToast('Failed to load sessions.'); }
-          }
-
-          function renderSessionEntry(session) {
-            const entry = document.createElement('div');
-            entry.className = 'session-entry' + (session.id === currentSessionId ? ' active' : '');
-            entry.dataset.id = session.id;
-
-            const meta = document.createElement('div');
-            meta.className = 'session-meta';
-
-            const title = document.createElement('div');
-            title.className = 'session-title';
-            title.textContent = session.title || 'New conversation';
-
-            const date = document.createElement('div');
-            date.className = 'session-date';
-            date.textContent = relativeDate(session.updated_at);
-
-            meta.appendChild(title);
-            meta.appendChild(date);
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn-delete-session';
-            delBtn.title = 'Delete conversation';
-            delBtn.textContent = '✕';
-            delBtn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              if (!confirm('Delete this conversation?')) return;
-              await deleteSession(session.id);
-            });
-
-            entry.appendChild(meta);
-            entry.appendChild(delBtn);
-            entry.addEventListener('click', () => selectSession(session.id));
-            sessionList.appendChild(entry);
-          }
-
-          function setActiveSessionEntry(sessionId) {
-            sessionList.querySelectorAll('.session-entry').forEach(el => {
-              el.classList.toggle('active', el.dataset.id === sessionId);
-            });
-          }
-
-          async function selectSession(sessionId) {
-            try {
-              const res = await fetch(`api/sessions/${encodeURIComponent(sessionId)}`);
-              if (!res.ok) throw new Error('Session not found');
-              const session = await res.json();
-              currentSessionId = sessionId;
-              setActiveSessionEntry(sessionId);
-              chatArea.innerHTML = '';
-              session.messages.forEach(m => appendBubble(m.content, m.role === 'user' ? 'user' : 'secretary'));
-            } catch (e) { showToast(`Failed to load session: ${e.message}`); }
-          }
-
-          async function newChat() {
-            const channelId = channelSelect.value;
-            if (!channelId) { showToast('Select a channel first.'); return; }
-            try {
-              const res = await fetch('api/sessions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ channel_id: channelId }),
-              });
-              const session = await res.json();
-              currentSessionId = session.id;
-              chatArea.innerHTML = '';
-              // Prepend to sidebar
-              const existing = sessionList.querySelector('.session-entry');
-              const temp = document.createElement('div');
-              renderSessionEntryInto(temp, session);
-              if (existing) sessionList.insertBefore(temp.firstChild, existing);
-              else sessionList.appendChild(temp.firstChild);
-              setActiveSessionEntry(currentSessionId);
-            } catch (e) { showToast(`Error: ${e.message}`); }
-          }
-
-          // Helper used by newChat to build entry DOM without full re-render
-          function renderSessionEntryInto(container, session) {
-            const frag = document.createDocumentFragment();
-            const entry = document.createElement('div');
-            entry.className = 'session-entry active';
-            entry.dataset.id = session.id;
-
-            const meta = document.createElement('div');
-            meta.className = 'session-meta';
-            const title = document.createElement('div');
-            title.className = 'session-title';
-            title.textContent = session.title || 'New conversation';
-            const date = document.createElement('div');
-            date.className = 'session-date';
-            date.textContent = relativeDate(session.updated_at);
-            meta.appendChild(title);
-            meta.appendChild(date);
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn-delete-session';
-            delBtn.title = 'Delete conversation';
-            delBtn.textContent = '✕';
-            delBtn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              if (!confirm('Delete this conversation?')) return;
-              await deleteSession(session.id);
-            });
-
-            entry.appendChild(meta);
-            entry.appendChild(delBtn);
-            entry.addEventListener('click', () => selectSession(session.id));
-            frag.appendChild(entry);
-            container.appendChild(frag);
-          }
-
-          async function deleteSession(sessionId) {
-            try {
-              await fetch(`api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
-              const entry = sessionList.querySelector(`[data-id="${sessionId}"]`);
-              if (entry) entry.remove();
-              if (currentSessionId === sessionId) {
-                currentSessionId = null;
-                chatArea.innerHTML = '';
-              }
-            } catch (e) { showToast(`Delete failed: ${e.message}`); }
-          }
-
-          btnNewChat.addEventListener('click', newChat);
-
-          // ---- Channels ----
-          async function loadChannels() {
-            try {
-              const res = await fetch('api/channels');
-              const channels = await res.json();
-              const current = channelSelect.value;
-              channelSelect.innerHTML = '<option value="">— select channel —</option>';
-              channels.forEach(c => {
-                const opt = document.createElement('option');
-                opt.value = c; opt.textContent = c;
-                if (c === current) opt.selected = true;
-                channelSelect.appendChild(opt);
-              });
-            } catch (e) { showToast('Failed to load channels.'); }
-          }
-          loadChannels();
-
-          channelSelect.addEventListener('change', () => {
-            btnDeleteChannel.disabled = !channelSelect.value;
-            btnBrowseMemory.disabled = !channelSelect.value;
-            currentSessionId = null;
-            chatArea.innerHTML = '';
-            loadSessions(channelSelect.value);
-          });
-
-          // ---- New Channel Modal ----
-
-          function resetModal() {
-            modalChannelName.value = '';
-          }
-
-          btnNew.addEventListener('click', () => {
-            resetModal();
-            modalBackdrop.classList.add('open');
-            modalChannelName.focus();
-          });
-          modalCancel.addEventListener('click', () => modalBackdrop.classList.remove('open'));
-          modalBackdrop.addEventListener('click', e => { if (e.target === modalBackdrop) modalBackdrop.classList.remove('open'); });
-          modalChannelName.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); modalCreate.click(); } });
-
-          modalCreate.addEventListener('click', async () => {
-            const name = modalChannelName.value.trim();
-            if (!name) return;
-            try {
-              const res = await fetch('api/channels', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
-              });
-              if (!res.ok) throw new Error(await res.text());
-              const data = await res.json();
-              modalBackdrop.classList.remove('open');
-              await loadChannels();
-              channelSelect.value = data.channel_id;
-              btnDeleteChannel.disabled = false;
-              loadSessions(data.channel_id);
-              showToast(`Channel "${data.channel_id}" created.`);
-            } catch (e) { showToast(`Error: ${e.message}`); }
-          });
-
-          // ---- Memory Browser ----
-          function openMemoryDetail(item) {
-            _currentDetailItem = item;
-            exitEditMode();
-            const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
-            memoryDetailBadge.className = `memory-type-badge ${typeClass}`;
-            memoryDetailBadge.textContent = item.type || 'unknown';
-            memoryDetailId.textContent = item.id;
-            const metaParts = [];
-            if (item.date) metaParts.push(item.date);
-            if (item.source) metaParts.push(item.source);
-            if (item.section) metaParts.push(item.section);
-            memoryDetailMeta.textContent = metaParts.join(' • ');
-            memoryDetailContent.textContent = item.content || '(empty)';
-            memoryListView.style.display = 'none';
-            memoryDetailView.style.display = '';
-          }
-
-          function closeMemoryDetail() {
-            exitEditMode();
-            memoryDetailView.style.display = 'none';
-            memoryListView.style.display = '';
-          }
-
-          function renderMemoryItem(item, groupCountSpan, groupItemsDiv) {
-            const row = document.createElement('div');
-            row.className = 'memory-item';
-            row.dataset.id = item.id;
-
-            const body = document.createElement('div');
-            body.className = 'memory-item-body';
-            body.addEventListener('click', () => openMemoryDetail(item));
-
-            const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
-            const badge = document.createElement('span');
-            badge.className = `memory-type-badge ${typeClass}`;
-            badge.textContent = item.type || 'unknown';
-
-            const preview = document.createElement('div');
-            preview.className = 'memory-item-preview';
-            preview.textContent = item.preview || '(empty)';
-
-            const metaParts = [];
-            if (item.date) metaParts.push(item.date);
-            if (item.source) metaParts.push(item.source);
-            if (item.section) metaParts.push(item.section);
-            const meta = document.createElement('div');
-            meta.className = 'memory-item-meta';
-            meta.textContent = metaParts.join(' • ');
-
-            body.appendChild(badge);
-            body.appendChild(preview);
-            body.appendChild(meta);
-
-            const delBtn = document.createElement('button');
-            delBtn.className = 'btn-delete-memory';
-            delBtn.title = 'Delete this memory';
-            delBtn.textContent = '\u2715';
-            delBtn.addEventListener('click', async (e) => {
-              e.stopPropagation();
-              if (!confirm('Delete this memory entry? This cannot be undone.')) return;
-              const channelId = channelSelect.value;
-              try {
-                const res = await fetch(
-                  `api/channels/${encodeURIComponent(channelId)}/memories/${encodeURIComponent(item.id)}`,
-                  { method: 'DELETE' }
-                );
-                if (!res.ok) {
-                  const data = await res.json().catch(() => ({}));
-                  throw new Error(data.detail || res.statusText);
-                }
-                row.remove();
-                if (groupCountSpan && groupItemsDiv) {
-                  const groupRemaining = groupItemsDiv.querySelectorAll('.memory-item').length;
-                  groupCountSpan.textContent = `${groupRemaining}`;
-                }
-                const total = memoryList.querySelectorAll('.memory-item').length;
-                memoryCount.textContent = `(${total} item${total !== 1 ? 's' : ''})`;
-                if (total === 0) {
-                  memoryList.style.display = 'none';
-                  memoryEmpty.style.display = '';
-                }
-                showToast('Memory entry deleted.');
-              } catch (e) {
-                showToast(`Delete failed: ${e.message}`);
-              }
-            });
-
-            row.appendChild(body);
-            row.appendChild(delBtn);
-            return row;
-          }
-
-          function renderMemoryGroup(label, items) {
-            const group = document.createElement('div');
-            group.className = 'memory-group';
-
-            const header = document.createElement('div');
-            header.className = 'memory-group-header';
-
-            const toggle = document.createElement('span');
-            toggle.className = 'memory-group-toggle';
-            toggle.textContent = '▼';
-
-            const labelSpan = document.createElement('span');
-            labelSpan.textContent = label;
-
-            const countSpan = document.createElement('span');
-            countSpan.className = 'memory-group-count';
-            countSpan.textContent = `${items.length}`;
-
-            header.appendChild(toggle);
-            header.appendChild(labelSpan);
-            header.appendChild(countSpan);
-
-            const itemsDiv = document.createElement('div');
-            itemsDiv.className = 'memory-group-items';
-
-            header.addEventListener('click', () => {
-              itemsDiv.classList.toggle('collapsed');
-              toggle.textContent = itemsDiv.classList.contains('collapsed') ? '▶' : '▼';
-            });
-
-            items.forEach(item => itemsDiv.appendChild(renderMemoryItem(item, countSpan, itemsDiv)));
-
-            group.appendChild(header);
-            group.appendChild(itemsDiv);
-            return group;
-          }
-
-          async function openMemoryBrowser() {
-            const channelId = channelSelect.value;
-            if (!channelId) return;
-
-            // Reset to list view
-            memoryDetailView.style.display = 'none';
-            memoryListView.style.display = '';
-            memoryList.innerHTML = '';
+          const total = memoryList.querySelectorAll('.memory-item').length;
+          memoryCount.textContent = `(${total} item${total !== 1 ? 's' : ''})`;
+          if (total === 0) {
             memoryList.style.display = 'none';
-            memoryEmpty.style.display = 'none';
-            memoryLoading.style.display = '';
-            memoryCount.textContent = '';
-            memoryModalBackdrop.classList.add('open');
-
-            try {
-              const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/memories`);
-              if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.detail || res.statusText);
-              }
-              const items = await res.json();
-              memoryLoading.style.display = 'none';
-              if (items.length === 0) {
-                memoryEmpty.style.display = '';
-              } else {
-                const channelItems = items.filter(i => i.type === 'raw' || i.type === 'summary');
-                const refItems = items.filter(i => i.type === 'reference_doc');
-                const otherItems = items.filter(i => !['raw', 'summary', 'reference_doc'].includes(i.type));
-                if (channelItems.length > 0) memoryList.appendChild(renderMemoryGroup('Channel Memory', channelItems));
-                if (refItems.length > 0) memoryList.appendChild(renderMemoryGroup('Reference Docs', refItems));
-                if (otherItems.length > 0) memoryList.appendChild(renderMemoryGroup('Other', otherItems));
-                memoryList.style.display = '';
-                memoryCount.textContent = `(${items.length} item${items.length !== 1 ? 's' : ''})`;
-              }
-            } catch (e) {
-              memoryLoading.style.display = 'none';
-              memoryEmpty.style.display = '';
-              memoryEmpty.textContent = `Failed to load memories: ${e.message}`;
-              showToast(`Error: ${e.message}`);
-            }
+            memoryEmpty.style.display = '';
           }
+          showToast('Memory entry deleted.');
+        } catch (e) {
+          showToast(`Delete failed: ${e.message}`);
+        }
+      });
 
-          function closeMemoryModal() {
-            memoryModalBackdrop.classList.remove('open');
-            // Reset to list view for next open
-            memoryDetailView.style.display = 'none';
-            memoryListView.style.display = '';
-            exitEditMode();
+      row.appendChild(body);
+      row.appendChild(delBtn);
+      return row;
+    }
+
+    function renderMemoryGroup(label, items) {
+      const group = document.createElement('div');
+      group.className = 'memory-group';
+
+      const header = document.createElement('div');
+      header.className = 'memory-group-header';
+
+      const toggle = document.createElement('span');
+      toggle.className = 'memory-group-toggle';
+      toggle.textContent = '▼';
+
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = label;
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'memory-group-count';
+      countSpan.textContent = `${items.length}`;
+
+      header.appendChild(toggle);
+      header.appendChild(labelSpan);
+      header.appendChild(countSpan);
+
+      const itemsDiv = document.createElement('div');
+      itemsDiv.className = 'memory-group-items';
+
+      header.addEventListener('click', () => {
+        itemsDiv.classList.toggle('collapsed');
+        toggle.textContent = itemsDiv.classList.contains('collapsed') ? '▶' : '▼';
+      });
+
+      items.forEach(item => itemsDiv.appendChild(renderMemoryItem(item, countSpan, itemsDiv)));
+
+      group.appendChild(header);
+      group.appendChild(itemsDiv);
+      return group;
+    }
+
+    async function openMemoryBrowser() {
+      const channelId = channelSelect.value;
+      if (!channelId) return;
+
+      // Reset to list view
+      memoryDetailView.style.display = 'none';
+      memoryListView.style.display = '';
+      memoryList.innerHTML = '';
+      memoryList.style.display = 'none';
+      memoryEmpty.style.display = 'none';
+      memoryLoading.style.display = '';
+      memoryCount.textContent = '';
+      memoryModalBackdrop.classList.add('open');
+
+      try {
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/memories`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+        const items = await res.json();
+        memoryLoading.style.display = 'none';
+        if (items.length === 0) {
+          memoryEmpty.style.display = '';
+        } else {
+          const channelItems = items.filter(i => i.type === 'raw' || i.type === 'summary');
+          const refItems = items.filter(i => i.type === 'reference_doc');
+          const otherItems = items.filter(i => !['raw', 'summary', 'reference_doc'].includes(i.type));
+          if (channelItems.length > 0) memoryList.appendChild(renderMemoryGroup('Channel Memory', channelItems));
+          if (refItems.length > 0) memoryList.appendChild(renderMemoryGroup('Reference Docs', refItems));
+          if (otherItems.length > 0) memoryList.appendChild(renderMemoryGroup('Other', otherItems));
+          memoryList.style.display = '';
+          memoryCount.textContent = `(${items.length} item${items.length !== 1 ? 's' : ''})`;
+        }
+      } catch (e) {
+        memoryLoading.style.display = 'none';
+        memoryEmpty.style.display = '';
+        memoryEmpty.textContent = `Failed to load memories: ${e.message}`;
+        showToast(`Error: ${e.message}`);
+      }
+    }
+
+    function closeMemoryModal() {
+      memoryModalBackdrop.classList.remove('open');
+      // Reset to list view for next open
+      memoryDetailView.style.display = 'none';
+      memoryListView.style.display = '';
+      exitEditMode();
+    }
+
+    // ---- Memory Edit ----
+    function enterEditMode(item) {
+      if (!item) return;
+      memoryDetailContent.style.display = 'none';
+      memoryDetailEditArea.value = item.content || '';
+      memoryDetailEditArea.style.display = '';
+      memoryDetailEdit.style.display = 'none';
+      memoryDetailSave.style.display = '';
+      memoryDetailCancelEdit.style.display = '';
+    }
+
+    function exitEditMode() {
+      memoryDetailContent.style.display = '';
+      memoryDetailEditArea.style.display = 'none';
+      memoryDetailEdit.style.display = '';
+      memoryDetailSave.style.display = 'none';
+      memoryDetailCancelEdit.style.display = 'none';
+    }
+
+    async function saveMemoryEdit() {
+      const channelId = channelSelect.value;
+      if (!_currentDetailItem || !channelId) return;
+      const newContent = memoryDetailEditArea.value.trim();
+      if (!newContent) { showToast('Content cannot be empty.'); return; }
+      memoryDetailSave.disabled = true;
+      try {
+        const res = await fetch(
+          `api/channels/${encodeURIComponent(channelId)}/memories/${encodeURIComponent(_currentDetailItem.id)}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: newContent }),
           }
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+        memoryDetailContent.textContent = newContent;
+        _currentDetailItem.content = newContent;
+        _currentDetailItem.preview = newContent.slice(0, 150);
+        const row = memoryList.querySelector(`[data-id="${_currentDetailItem.id}"]`);
+        if (row) {
+          const preview = row.querySelector('.memory-item-preview');
+          if (preview) preview.textContent = newContent.slice(0, 150);
+        }
+        exitEditMode();
+        showToast('Memory updated.');
+      } catch (e) {
+        showToast(`Save failed: ${e.message}`);
+      } finally {
+        memoryDetailSave.disabled = false;
+      }
+    }
 
-          // ---- Memory Edit ----
-          function enterEditMode(item) {
-            if (!item) return;
-            memoryDetailContent.style.display = 'none';
-            memoryDetailEditArea.value = item.content || '';
-            memoryDetailEditArea.style.display = '';
-            memoryDetailEdit.style.display = 'none';
-            memoryDetailSave.style.display = '';
-            memoryDetailCancelEdit.style.display = '';
+    // ---- Memory Export ----
+    async function exportMemories() {
+      const channelId = channelSelect.value;
+      if (!channelId) return;
+      try {
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/memories`);
+        if (!res.ok) throw new Error('Failed to fetch memories');
+        const items = await res.json();
+        const exportData = {
+          channel_id: channelId,
+          exported_at: new Date().toISOString(),
+          memories: items,
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${channelId}-memories.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`Exported ${items.length} memor${items.length !== 1 ? 'ies' : 'y'}.`);
+      } catch (e) {
+        showToast(`Export failed: ${e.message}`);
+      }
+    }
+
+    // ---- Memory Import (browser) ----
+    async function handleMemoryImport(file) {
+      const channelId = channelSelect.value;
+      if (!channelId || !file) return;
+      let data;
+      try {
+        data = JSON.parse(await file.text());
+      } catch {
+        showToast('Invalid JSON file.');
+        return;
+      }
+      const memories = data.memories;
+      if (!Array.isArray(memories)) {
+        showToast('Invalid format: expected a "memories" array.');
+        return;
+      }
+      try {
+        showToast('Importing…');
+        const res = await fetch(
+          `api/channels/${encodeURIComponent(channelId)}/memories/import`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memories }),
           }
+        );
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.detail || JSON.stringify(result));
+        showToast(`Imported: ${result.imported}, Skipped: ${result.skipped}`);
+        openMemoryBrowser();
+      } catch (e) {
+        showToast(`Import failed: ${e.message}`);
+      }
+    }
 
-          function exitEditMode() {
-            memoryDetailContent.style.display = '';
-            memoryDetailEditArea.style.display = 'none';
-            memoryDetailEdit.style.display = '';
-            memoryDetailSave.style.display = 'none';
-            memoryDetailCancelEdit.style.display = 'none';
-          }
+    btnBrowseMemory.addEventListener('click', openMemoryBrowser);
+    memoryModalClose.addEventListener('click', closeMemoryModal);
+    memoryDetailBack.addEventListener('click', closeMemoryDetail);
+    memoryDetailClose.addEventListener('click', closeMemoryModal);
+    memoryModalBackdrop.addEventListener('click', e => {
+      if (e.target === memoryModalBackdrop) closeMemoryModal();
+    });
+    memoryDetailEdit.addEventListener('click', () => enterEditMode(_currentDetailItem));
+    memoryDetailSave.addEventListener('click', saveMemoryEdit);
+    memoryDetailCancelEdit.addEventListener('click', exitEditMode);
+    btnMemoryExport.addEventListener('click', exportMemories);
+    btnMemoryImport.addEventListener('click', () => { memoryFileInput.value = ''; memoryFileInput.click(); });
+    memoryFileInput.addEventListener('change', () => { const f = memoryFileInput.files[0]; if (f) handleMemoryImport(f); });
 
-          async function saveMemoryEdit() {
-            const channelId = channelSelect.value;
-            if (!_currentDetailItem || !channelId) return;
-            const newContent = memoryDetailEditArea.value.trim();
-            if (!newContent) { showToast('Content cannot be empty.'); return; }
-            memoryDetailSave.disabled = true;
-            try {
-              const res = await fetch(
-                `api/channels/${encodeURIComponent(channelId)}/memories/${encodeURIComponent(_currentDetailItem.id)}`,
-                {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ content: newContent }),
-                }
-              );
-              if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.detail || res.statusText);
-              }
-              memoryDetailContent.textContent = newContent;
-              _currentDetailItem.content = newContent;
-              _currentDetailItem.preview = newContent.slice(0, 150);
-              const row = memoryList.querySelector(`[data-id="${_currentDetailItem.id}"]`);
-              if (row) {
-                const preview = row.querySelector('.memory-item-preview');
-                if (preview) preview.textContent = newContent.slice(0, 150);
-              }
-              exitEditMode();
-              showToast('Memory updated.');
-            } catch (e) {
-              showToast(`Save failed: ${e.message}`);
-            } finally {
-              memoryDetailSave.disabled = false;
-            }
-          }
+    // ---- Delete Channel ----
+    btnDeleteChannel.addEventListener('click', async () => {
+      const channelId = channelSelect.value;
+      if (!channelId) return;
+      if (!confirm(`Delete channel "${channelId}" and all its memories? This cannot be undone.`)) return;
+      try {
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+        await loadChannels();
+        channelSelect.value = '';
+        btnDeleteChannel.disabled = true;
+        chatArea.innerHTML = '';
+        currentSessionId = null;
+        sessionList.innerHTML = '';
+        showToast(`Channel "${channelId}" deleted.`);
+      } catch (e) { showToast(`Delete failed: ${e.message}`); }
+    });
 
-          // ---- Memory Export ----
-          async function exportMemories() {
-            const channelId = channelSelect.value;
-            if (!channelId) return;
-            try {
-              const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/memories`);
-              if (!res.ok) throw new Error('Failed to fetch memories');
-              const items = await res.json();
-              const exportData = {
-                channel_id: channelId,
-                exported_at: new Date().toISOString(),
-                memories: items,
-              };
-              const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `${channelId}-memories.json`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-              showToast(`Exported ${items.length} memor${items.length !== 1 ? 'ies' : 'y'}.`);
-            } catch (e) {
-              showToast(`Export failed: ${e.message}`);
-            }
-          }
+    // ---- Import JSON ----
+    btnImport.addEventListener('click', () => {
+      if (!channelSelect.value) { showToast('Select a channel first.'); return; }
+      fileInput.value = '';
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const channelId = channelSelect.value;
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        showToast('Importing…');
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/import`, {
+          method: 'POST', body: form,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+        showToast(`Imported: ${data.imported}, Skipped: ${data.skipped}`);
+      } catch (e) { showToast(`Import failed: ${e.message}`); }
+    });
 
-          // ---- Memory Import (browser) ----
-          async function handleMemoryImport(file) {
-            const channelId = channelSelect.value;
-            if (!channelId || !file) return;
-            let data;
-            try {
-              data = JSON.parse(await file.text());
-            } catch {
-              showToast('Invalid JSON file.');
-              return;
-            }
-            const memories = data.memories;
-            if (!Array.isArray(memories)) {
-              showToast('Invalid format: expected a "memories" array.');
-              return;
-            }
-            try {
-              showToast('Importing…');
-              const res = await fetch(
-                `api/channels/${encodeURIComponent(channelId)}/memories/import`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ memories }),
-                }
-              );
-              const result = await res.json();
-              if (!res.ok) throw new Error(result.detail || JSON.stringify(result));
-              showToast(`Imported: ${result.imported}, Skipped: ${result.skipped}`);
-              openMemoryBrowser();
-            } catch (e) {
-              showToast(`Import failed: ${e.message}`);
-            }
-          }
+    // ---- Chat ----
+    function appendBubble(text, role, isThinking = false) {
+      const div = document.createElement('div');
+      div.className = `bubble ${role}${isThinking ? ' thinking' : ''}`;
 
-          btnBrowseMemory.addEventListener('click', openMemoryBrowser);
-          memoryModalClose.addEventListener('click', closeMemoryModal);
-          memoryDetailBack.addEventListener('click', closeMemoryDetail);
-          memoryDetailClose.addEventListener('click', closeMemoryModal);
-          memoryModalBackdrop.addEventListener('click', e => {
-            if (e.target === memoryModalBackdrop) closeMemoryModal();
+      const content = document.createElement('span');
+      content.className = 'bubble-content';
+      content.textContent = text;
+
+      if (!isThinking && role !== 'thinking') {
+        const btn = document.createElement('button');
+        btn.className = 'bubble-copy-btn';
+        btn.title = 'Copy message';
+        btn.textContent = '📋';
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(text).then(() => showToast('Copied!'));
+        });
+        div.appendChild(btn);
+      }
+
+      div.appendChild(content);
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return div;
+    }
+
+    function appendStreamingBubble() {
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble secretary';
+      const metricsBar = document.createElement('div');
+      metricsBar.className = 'metrics-bar';
+      chatArea.appendChild(bubble);
+      chatArea.appendChild(metricsBar);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return { bubble, metricsBar };
+    }
+
+    async function sendMessage() {
+      const msg = msgInput.value.trim();
+      const channelId = channelSelect.value;
+      if (!msg) return;
+      if (!channelId) { showToast('Select or create a channel first.'); return; }
+
+      // Auto-create session if none active
+      if (!currentSessionId) {
+        try {
+          const res = await fetch('api/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel_id: channelId }),
           });
-          memoryDetailEdit.addEventListener('click', () => enterEditMode(_currentDetailItem));
-          memoryDetailSave.addEventListener('click', saveMemoryEdit);
-          memoryDetailCancelEdit.addEventListener('click', exitEditMode);
-          btnMemoryExport.addEventListener('click', exportMemories);
-          btnMemoryImport.addEventListener('click', () => { memoryFileInput.value = ''; memoryFileInput.click(); });
-          memoryFileInput.addEventListener('change', () => { const f = memoryFileInput.files[0]; if (f) handleMemoryImport(f); });
+          const session = await res.json();
+          currentSessionId = session.id;
+          const temp = document.createElement('div');
+          renderSessionEntryInto(temp, session);
+          const existing = sessionList.querySelector('.session-entry');
+          if (existing) sessionList.insertBefore(temp.firstChild, existing);
+          else sessionList.appendChild(temp.firstChild);
+          setActiveSessionEntry(currentSessionId);
+        } catch (e) {
+          showToast(`Failed to create session: ${e.message}`);
+          return;
+        }
+      }
 
-          // ---- Delete Channel ----
-          btnDeleteChannel.addEventListener('click', async () => {
-            const channelId = channelSelect.value;
-            if (!channelId) return;
-            if (!confirm(`Delete channel "${channelId}" and all its memories? This cannot be undone.`)) return;
-            try {
-              const res = await fetch(`api/channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' });
-              if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.detail || res.statusText);
-              }
-              await loadChannels();
-              channelSelect.value = '';
-              btnDeleteChannel.disabled = true;
-              chatArea.innerHTML = '';
-              currentSessionId = null;
-              sessionList.innerHTML = '';
-              showToast(`Channel "${channelId}" deleted.`);
-            } catch (e) { showToast(`Delete failed: ${e.message}`); }
-          });
+      appendBubble(msg, 'user');
+      msgInput.value = '';
+      msgInput.style.height = 'auto';
+      btnSend.disabled = true;
 
-          // ---- Import JSON ----
-          btnImport.addEventListener('click', () => {
-            if (!channelSelect.value) { showToast('Select a channel first.'); return; }
-            fileInput.value = '';
-            fileInput.click();
-          });
-          fileInput.addEventListener('change', async () => {
-            const file = fileInput.files[0];
-            if (!file) return;
-            const channelId = channelSelect.value;
-            const form = new FormData();
-            form.append('file', file);
-            try {
-              showToast('Importing…');
-              const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/import`, {
-                method: 'POST', body: form,
-              });
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
-              showToast(`Imported: ${data.imported}, Skipped: ${data.skipped}`);
-            } catch (e) { showToast(`Import failed: ${e.message}`); }
-          });
+      const { bubble: responseBubble, metricsBar } = appendStreamingBubble();
+      responseBubble.textContent = '';
+      metricsBar.textContent = 'Generating\u2026';
 
-          // ---- Chat ----
-          function appendBubble(text, role, isThinking = false) {
-            const div = document.createElement('div');
-            div.className = `bubble ${role}${isThinking ? ' thinking' : ''}`;
-            div.textContent = text;
-            chatArea.appendChild(div);
-            chatArea.scrollTop = chatArea.scrollHeight;
-            return div;
-          }
+      try {
+        const res = await fetch('api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, channel_id: channelId, session_id: currentSessionId }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
 
-          function appendStreamingBubble() {
-            const bubble = document.createElement('div');
-            bubble.className = 'bubble secretary';
-            const metricsBar = document.createElement('div');
-            metricsBar.className = 'metrics-bar';
-            chatArea.appendChild(bubble);
-            chatArea.appendChild(metricsBar);
-            chatArea.scrollTop = chatArea.scrollHeight;
-            return { bubble, metricsBar };
-          }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = '';
+        let sessionUpdated = false;
 
-          async function sendMessage() {
-            const msg = msgInput.value.trim();
-            const channelId = channelSelect.value;
-            if (!msg) return;
-            if (!channelId) { showToast('Select or create a channel first.'); return; }
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuffer += decoder.decode(value, { stream: true });
 
-            // Auto-create session if none active
-            if (!currentSessionId) {
-              try {
-                const res = await fetch('api/sessions', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ channel_id: channelId }),
-                });
-                const session = await res.json();
-                currentSessionId = session.id;
-                const temp = document.createElement('div');
-                renderSessionEntryInto(temp, session);
-                const existing = sessionList.querySelector('.session-entry');
-                if (existing) sessionList.insertBefore(temp.firstChild, existing);
-                else sessionList.appendChild(temp.firstChild);
+          // Process complete SSE events (delimited by \n\n)
+          let boundary;
+          while ((boundary = sseBuffer.indexOf('\n\n')) !== -1) {
+            const eventText = sseBuffer.slice(0, boundary);
+            sseBuffer = sseBuffer.slice(boundary + 2);
+
+            for (const line of eventText.split('\n')) {
+              if (!line.startsWith('data: ')) continue;
+              let event;
+              try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+              if (event.type === 'session' && !sessionUpdated) {
+                currentSessionId = event.session_id;
                 setActiveSessionEntry(currentSessionId);
-              } catch (e) {
-                showToast(`Failed to create session: ${e.message}`);
-                return;
-              }
-            }
+                sessionUpdated = true;
 
-            appendBubble(msg, 'user');
-            msgInput.value = '';
-            msgInput.style.height = 'auto';
-            btnSend.disabled = true;
+              } else if (event.type === 'token') {
+                responseBubble.textContent += event.content;
+                chatArea.scrollTop = chatArea.scrollHeight;
 
-            const { bubble: responseBubble, metricsBar } = appendStreamingBubble();
-            responseBubble.textContent = '';
-            metricsBar.textContent = 'Generating\u2026';
+              } else if (event.type === 'metrics') {
+                metricsBar.textContent =
+                  `\u23F1 First word: ${event.ttfw}s\u2003|\u2003${event.wps} w/s\u2003|\u2003Total: ${event.total}s`;
 
-            try {
-              const res = await fetch('api/chat/stream', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: msg, channel_id: channelId, session_id: currentSessionId }),
-              });
-              if (!res.ok) {
-                const data = await res.json().catch(() => ({}));
-                throw new Error(data.detail || res.statusText);
-              }
-
-              const reader = res.body.getReader();
-              const decoder = new TextDecoder();
-              let sseBuffer = '';
-              let sessionUpdated = false;
-
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                sseBuffer += decoder.decode(value, { stream: true });
-
-                // Process complete SSE events (delimited by \n\n)
-                let boundary;
-                while ((boundary = sseBuffer.indexOf('\n\n')) !== -1) {
-                  const eventText = sseBuffer.slice(0, boundary);
-                  sseBuffer = sseBuffer.slice(boundary + 2);
-
-                  for (const line of eventText.split('\n')) {
-                    if (!line.startsWith('data: ')) continue;
-                    let event;
-                    try { event = JSON.parse(line.slice(6)); } catch { continue; }
-
-                    if (event.type === 'session' && !sessionUpdated) {
-                      currentSessionId = event.session_id;
-                      setActiveSessionEntry(currentSessionId);
-                      sessionUpdated = true;
-
-                    } else if (event.type === 'token') {
-                      responseBubble.textContent += event.content;
-                      chatArea.scrollTop = chatArea.scrollHeight;
-
-                    } else if (event.type === 'metrics') {
-                      metricsBar.textContent =
-                        `\u23F1 First word: ${event.ttfw}s\u2003|\u2003${event.wps} w/s\u2003|\u2003Total: ${event.total}s`;
-
-                    } else if (event.type === 'done') {
-                      if (event.title_updated && event.session_id) {
-                        try {
-                          const sessionRes = await fetch(`api/sessions/${encodeURIComponent(event.session_id)}`);
-                          if (sessionRes.ok) {
-                            const updated = await sessionRes.json();
-                            const entry = sessionList.querySelector(`[data-id="${event.session_id}"]`);
-                            if (entry) {
-                              const titleEl = entry.querySelector('.session-title');
-                              if (titleEl) titleEl.textContent = updated.title || 'New conversation';
-                            }
-                          }
-                        } catch { /* best-effort */ }
-                      }
-                      if (!responseBubble.textContent) {
-                        responseBubble.textContent = 'No response generated.';
-                      }
-                      if (!metricsBar.textContent.startsWith('\u23F1')) {
-                        metricsBar.textContent = '';
+              } else if (event.type === 'done') {
+                if (event.title_updated && event.session_id) {
+                  try {
+                    const sessionRes = await fetch(`api/sessions/${encodeURIComponent(event.session_id)}`);
+                    if (sessionRes.ok) {
+                      const updated = await sessionRes.json();
+                      const entry = sessionList.querySelector(`[data-id="${event.session_id}"]`);
+                      if (entry) {
+                        const titleEl = entry.querySelector('.session-title');
+                        if (titleEl) titleEl.textContent = updated.title || 'New conversation';
                       }
                     }
-                  }
+                  } catch { /* best-effort */ }
+                }
+                if (!responseBubble.textContent) {
+                  responseBubble.textContent = 'No response generated.';
+                }
+                if (!metricsBar.textContent.startsWith('\u23F1')) {
+                  metricsBar.textContent = '';
                 }
               }
-            } catch (e) {
-              responseBubble.textContent = `Error: ${e.message}`;
-              metricsBar.textContent = '';
-            } finally {
-              btnSend.disabled = false;
-              msgInput.focus();
             }
           }
+        }
+      } catch (e) {
+        responseBubble.textContent = `Error: ${e.message}`;
+        metricsBar.textContent = '';
+      } finally {
+        btnSend.disabled = false;
+        msgInput.focus();
+      }
+    }
 
-          btnSend.addEventListener('click', sendMessage);
-          msgInput.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-          });
-          // Auto-resize textarea
-          msgInput.addEventListener('input', () => {
-            msgInput.style.height = 'auto';
-            msgInput.style.height = Math.min(msgInput.scrollHeight, 140) + 'px';
-          });
-        </script>
+    btnSend.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+    // Auto-resize textarea
+    msgInput.addEventListener('input', () => {
+      msgInput.style.height = 'auto';
+      msgInput.style.height = Math.min(msgInput.scrollHeight, 140) + 'px';
+    });
+  </script>
 </body>
 
 </html>
