@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from typing import Any, AsyncGenerator
 
@@ -25,6 +26,13 @@ if settings.CHAT_MODEL_THINK:
 
 chat_llm = ChatOllama(**_chat_kwargs)
 
+# Fast model — router_node only, no thinking mode
+router_llm = ChatOllama(
+    base_url=settings.OLLAMA_CHAT_URL,
+    model=settings.CHAT_MODEL_ROUTER,
+    client_kwargs={"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}},
+)
+
 
 # ---------------------------------------------------------------------------
 # Node functions
@@ -32,16 +40,18 @@ chat_llm = ChatOllama(**_chat_kwargs)
 
 
 def router_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Classify and segment the user message using chat_llm."""
+    """Classify and segment the user message using router_llm."""
     user_message: str = state["messages"][-1]
-    response = chat_llm.invoke(
+    response = router_llm.invoke(
         [
             SystemMessage(content=SPLITTER_PROMPT),
             HumanMessage(content=user_message),
         ]
     )
     try:
-        data = json.loads(response.content.strip())
+        raw = response.content if isinstance(response.content, str) else ""
+        raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        data = json.loads(raw)
         intents: list[str] = data.get("intents", [])
         report_segment: str | None = data.get("report_segment") or None
         question_segment: str | None = data.get("question_segment") or None
