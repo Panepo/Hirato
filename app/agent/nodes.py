@@ -83,13 +83,25 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     if "progress_report" not in state.get("intents", []):
         return {}
     report_text: str = state.get("report_segment") or state["messages"][-1]
+    today = date.today().isoformat()
     response = chat_llm.invoke(
         [
-            SystemMessage(content=EXTRACTOR_PROMPT),
+            SystemMessage(content=EXTRACTOR_PROMPT.format(today=today)),
             HumanMessage(content=report_text),
         ]
     )
-    return {"extracted_summary": response.content.strip()}
+    raw = response.content.strip()
+    # Enforce today as the default week if the LLM left it unspecified
+    try:
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        extracted = json.loads(cleaned)
+        week_val = extracted.get("week", "")
+        if not week_val or week_val.lower() in ("unspecified", "unknown", "n/a", ""):
+            extracted["week"] = today
+        raw = json.dumps(extracted, ensure_ascii=False)
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    return {"extracted_summary": raw}
 
 
 def store_node(state: dict[str, Any]) -> dict[str, Any]:
