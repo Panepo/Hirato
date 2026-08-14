@@ -6,32 +6,20 @@ from datetime import date
 from typing import Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
 
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, SPLITTER_PROMPT
 from app.core.config import settings
+from app.core.llm import LLMInference
 from app.memory.store import chroma_store
 
 # ---------------------------------------------------------------------------
 # LLM clients
 # ---------------------------------------------------------------------------
 
-_chat_kwargs: dict[str, Any] = {
-    "base_url": settings.OLLAMA_CHAT_URL,
-    "model": settings.CHAT_MODEL,
-    "client_kwargs": {"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}},
-}
-if settings.CHAT_MODEL_THINK:
-    _chat_kwargs["think"] = True
+chat_llm = LLMInference()
 
-chat_llm = ChatOllama(**_chat_kwargs)
-
-# Fast model — router_node only, no thinking mode
-router_llm = ChatOllama(
-    base_url=settings.OLLAMA_CHAT_URL,
-    model=settings.CHAT_MODEL_ROUTER,
-    client_kwargs={"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}},
-)
+# Fast model — router_node only
+router_llm = LLMInference(temperature=0.3)
 
 
 # ---------------------------------------------------------------------------
@@ -42,14 +30,14 @@ router_llm = ChatOllama(
 def router_node(state: dict[str, Any]) -> dict[str, Any]:
     """Classify and segment the user message using router_llm."""
     user_message: str = state["messages"][-1]
-    response = router_llm.invoke(
-        [
+    response = router_llm.generate_response(
+        messages=[
             SystemMessage(content=SPLITTER_PROMPT),
             HumanMessage(content=user_message),
         ]
     )
     try:
-        raw = response.content if isinstance(response.content, str) else ""
+        raw = response if isinstance(response, str) else ""
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         data = json.loads(raw)
         intents: list[str] = data.get("intents", [])
@@ -84,13 +72,12 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
         return {}
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
-    response = chat_llm.invoke(
-        [
+    raw = chat_llm.generate_response(
+        messages=[
             SystemMessage(content=EXTRACTOR_PROMPT.format(today=today)),
             HumanMessage(content=report_text),
         ]
     )
-    raw = response.content.strip()
     # Enforce today as the default week if the LLM left it unspecified
     try:
         cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
@@ -154,13 +141,13 @@ def answer_node(state: dict[str, Any]) -> dict[str, Any]:
         context_text = "\n\n---\n\n".join(parts)
 
     system_content = ANSWER_PROMPT.format(context=context_text)
-    response = chat_llm.invoke(
-        [
+    response = chat_llm.generate_response(
+        messages=[
             SystemMessage(content=system_content),
             HumanMessage(content=question),
         ]
     )
-    return {"answer_response": response.content.strip()}
+    return {"answer_response": response.strip()}
 
 
 def combiner_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -192,11 +179,14 @@ async def answer_node_astream(state: dict[str, Any]) -> AsyncGenerator[str, None
         context_text = "\n\n---\n\n".join(parts)
 
     system_content = ANSWER_PROMPT.format(context=context_text)
-    async for chunk in chat_llm.astream(
-        [
-            SystemMessage(content=system_content),
-            HumanMessage(content=question),
-        ]
-    ):
-        if chunk.content:
-            yield chunk.content
+
+    # Use stream_response instead of astream
+    messages = [
+        SystemMessage(content=system_content),
+        HumanMessage(content=question),
+    ]
+
+    # stream_response is a synchronous generator, so we iterate over it directly
+    for chunk in chat_llm.stream_response(messages=messages):
+        if chunk:
+            yield chunk

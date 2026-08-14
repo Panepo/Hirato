@@ -1,10 +1,23 @@
 [project]
 name = "hirato-secretary"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = "==3.13.3"
 description = "Hirato Secretary — a channel-based LLM memory assistant"
 dependencies = [
-    "aiosqlite>=0.22.1",
+    "langgraph",
+    "langchain",
+    "langchain-core",
+    "langchain_community",
+    "langchain-openai",
+    "fastapi",
+    "uvicorn[standard]",
+    "requests",
+    "chromadb",
+    "python-dotenv",
+    "python-multipart",
+    "aiosqlite",
+    "httpx",
+    "python-telegram-bot>=21.0",
 ]
 
 [tool.poe.tasks]

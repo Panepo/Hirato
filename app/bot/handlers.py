@@ -331,13 +331,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Auto-generate title on first turn
     if not prior_messages:
         try:
-            title_response = chat_llm.invoke(
-                [
+            title_response = chat_llm.generate_response(
+                messages=[
                     SystemMessage(content=TITLE_PROMPT),
                     HumanMessage(content=user_text),
                 ]
             )
-            await sessions_store.update_title(session_id, title_response.content.strip())
+            await sessions_store.update_title(session_id, title_response.strip())
         except Exception:
             pass
 

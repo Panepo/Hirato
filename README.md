@@ -1,6 +1,6 @@
 # Hirato — LLM Project Secretary
 
-An AI-powered project secretary that lets teams log progress reports and query project history through a chat interface. Built with FastAPI, LangGraph, ChromaDB, and Ollama.
+An AI-powered project secretary that lets teams log progress reports and query project history through a chat interface. Built with FastAPI, LangGraph, ChromaDB, and OpenAI-compatible LLMs.
 
 ## Features
 
@@ -33,15 +33,15 @@ The LangGraph agent runs two paths:
 |---|---|
 | API & server | FastAPI + Uvicorn |
 | Agent orchestration | LangGraph |
-| LLM inference | Ollama (chat + router models) |
-| Embeddings | Ollama embeddings |
+| LLM inference | OpenAI-compatible LLMs |
+| Embeddings | OpenAI-compatible embeddings |
 | Vector store | ChromaDB (persistent, local) |
 | Frontend | Vanilla HTML/CSS/JS (served as static files) |
 
 ## Requirements
 
 - Python ≥ 3.11
-- A running [Ollama](https://ollama.com) instance with your chosen models pulled
+- An OpenAI-compatible LLM server with your chosen models available
 
 ## Installation
 
@@ -56,14 +56,24 @@ pip install -r requirements.txt
 Create a `.env` file in the project root:
 
 ```env
-OLLAMA_CHAT_URL=http://localhost:11434
-OLLAMA_BEARER=                    # leave empty if no auth
-CHAT_MODEL=llama3.2               # model used for extraction and answering
-CHAT_MODEL_ROUTER=llama3.2        # model used for intent classification (can be smaller)
-CHAT_MODEL_THINK=false            # set true to enable thinking mode (if model supports it)
-EMBEDDING_MODEL=nomic-embed-text  # embedding model
-CHROMA_PERSIST_PATH=./chroma_db   # local path for ChromaDB storage
 PORT=7950
+
+# LLM
+CHAT_MODEL='Qwen-AgentWorld-35B-A3B'
+CHAT_BASE_URL='http://10.168.3.58/v1'
+CHAT_API_KEY='sk-F7qFAdI1JWOzLqDRhAtSww'
+
+# Router
+CHAT_MODEL_ROUTER='Qwen2.5-7B-Instruct'
+ROUTER_BASE_URL='http://10.68.129.74/v1'
+ROUTER_API_KEY='sk-fattm5rfSe5LAZ680jxcAw'
+
+# Embedding
+EMBEDDING_MODEL='bge-m3'
+EMBEDDING_BASE_URL='http://10.68.129.74/v1'
+EMBEDDING_API_KEY='sk-fattm5rfSe5LAZ680jxcAw'
+
+CHROMA_PERSIST_PATH=./chroma_db   # local path for ChromaDB storage
 ```
 
 ## Running

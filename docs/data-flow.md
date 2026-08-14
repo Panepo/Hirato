@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hirato is a FastAPI application backed by a LangGraph agent. It gives each project a persistent vector memory (ChromaDB) and can handle mixed messages that contain both a progress report **and** a question in a single input. All LLM inference is handled by a self-hosted Ollama instance. Chat history is persisted in a local SQLite database (`sessions.db`), surfaced through a left sidebar in the frontend.
+Hirato is a FastAPI application backed by a LangGraph agent. It gives each project a persistent vector memory (ChromaDB) and can handle mixed messages that contain both a progress report **and** a question in a single input. All LLM inference is handled by an OpenAI-compatible LLM server. Chat history is persisted in a local SQLite database (`sessions.db`), surfaced through a left sidebar in the frontend.
 
 ---
 
@@ -16,7 +16,7 @@ Hirato is a FastAPI application backed by a LangGraph agent. It gives each proje
 | **Agent Nodes** (`app/agent/nodes.py`) | Individual processing steps (router/splitter, extractor, store, retriever, answer, combiner) |
 | **ChromaStore** (`app/memory/store.py`) | Persistent vector memory backed by ChromaDB |
 | **SQLiteSessionStore** (`app/memory/sessions.py`) | Persistent chat sessions and message history backed by SQLite + aiosqlite |
-| **Ollama** (external) | LLM inference for routing, extraction, answering, title generation, and embedding |
+| **OpenAI-compatible LLM** (external) | LLM inference for routing, extraction, answering, title generation, and embedding |
 
 ---
 
@@ -97,7 +97,7 @@ START
   │
   ▼
 router_node
-  ├── Invokes: chat_llm (main Ollama model)
+  ├── Invokes: chat_llm (main LLM model)
   ├── Prompt: SPLITTER_PROMPT — classify AND segment the message
   ├── Parses JSON response; reconciles intents against segments
   ├── Fallback on parse error: intents=["question"], question_segment=full message
@@ -114,7 +114,7 @@ extractor_node  →  store_node  →  retriever_node  →  answer_node  →  com
 ```
 extractor_node
   ├── Guard: skips entirely if "progress_report" not in state["intents"]
-  ├── Invokes: chat_llm (main Ollama model, optional think mode)
+  ├── Invokes: chat_llm (main LLM model, optional think mode)
   ├── Prompt: EXTRACTOR_PROMPT
   ├── Input:  state["report_segment"]  (isolated report text)
   └── Writes: state["extracted_summary"]
@@ -136,7 +136,7 @@ retriever_node
   ├── Guard: skips entirely if "question" not in state["intents"]
   ├── Calls: chroma_store.search_memory(project_id, query, n_results=5)
   │          ├── query = state["question_segment"]  (isolated question text)
-  │          ├── OllamaEmbeddings.embed_documents([query])  (embedding model)
+  │          ├── OpenAI-compatible embeddings.embed_documents([query])  (embedding model)
   │          ├── ChromaDB collection.query() — cosine similarity HNSW index
   │          └── Results sorted by metadata["date"] descending (newest first)
   └── Writes: state["retrieved_docs"]
@@ -210,7 +210,7 @@ chroma_store.import_chunks(project_id, chunks)
 ChromaDB (persistent, ./chroma_db)
   │
   └── One Collection per project_id
-        ├── Embedding function: OllamaEmbeddings (cosine HNSW)
+        ├── Embedding function: Custom embedding function (cosine HNSW)
         └── Document types stored:
              ┌────────────────┬─────────────────────────────────────────────┐
              │ type           │ content                                     │
@@ -241,14 +241,12 @@ SQLite (./sessions.db)
 
 ---
 
-## LLM Layer (Ollama)
+## LLM Layer (OpenAI-compatible)
 
 | Client | Config key | Purpose |
 |---|---|---|
 | `chat_llm` | `CHAT_MODEL` | Splitting/classification, extraction, answering, title generation — main model (optional think mode via `CHAT_MODEL_THINK`) |
-| `OllamaEmbeddings` | `EMBEDDING_MODEL` | Vectorises text for ChromaDB indexing and querying |
-
-All clients connect to `OLLAMA_CHAT_URL` with a bearer token (`OLLAMA_BEARER`).
+| `EmbeddingInference` | `EMBEDDING_MODEL` | Vectorises text for ChromaDB indexing and querying |
 
 ---
 
@@ -274,18 +272,23 @@ class AgentState(TypedDict):
 
 | Key | Default | Purpose |
 |---|---|---|
-| `OLLAMA_CHAT_URL` | — | Ollama base URL |
-| `OLLAMA_BEARER` | — | Bearer token for Ollama |
 | `CHAT_MODEL` | — | Main LLM model name |
+| `CHAT_BASE_URL` | — | Main LLM base URL |
+| `CHAT_API_KEY` | — | Main LLM API key |
+| `CHAT_MODEL_ROUTER` | — | Router LLM model name |
+| `ROUTER_BASE_URL` | — | Router LLM base URL |
+| `ROUTER_API_KEY` | — | Router LLM API key |
 | `CHAT_MODEL_THINK` | `false` | Enable think mode on main model |
 | `EMBEDDING_MODEL` | — | Embedding model name |
+| `EMBEDDING_BASE_URL` | — | Embedding base URL |
+| `EMBEDDING_API_KEY` | — | Embedding API key |
 | `CHROMA_PERSIST_PATH` | `./chroma_db` | ChromaDB storage path |
-| `SESSIONS_DB_PATH` | `./sessions.db` | SQLite sessions database path |
+| `SESSIONS_DB_PATH` | `./sessions.db` | SQLite sessions database path |n OpenAI-compatible LLM server
 | `PORT` | `7950` | HTTP server port |
 
 ## Overview
 
-Hirato is a FastAPI application backed by a LangGraph agent. It gives each project a persistent vector memory (ChromaDB) and can handle mixed messages that contain both a progress report **and** a question in a single input. All LLM inference is handled by a self-hosted Ollama instance.
+Hirato is a FastAPI application backed by a LangGraph agent. It gives each project a persistent vector memory (ChromaDB) and can handle mixed messages that contain both a progress report **and** a question in a single input. All LLM inference is handled by an OpenAI-compatible LLM server.
 
 ---
 
@@ -293,12 +296,13 @@ Hirato is a FastAPI application backed by a LangGraph agent. It gives each proje
 
 | Component | Role |
 |---|---|
+| **OpenAI-compatible LLM** (external) | LLM inference for routing, extraction, answering, and embedding |
 | **FastAPI** (`main.py`) | HTTP server; serves REST API + static frontend |
 | **API Routes** (`app/api/routes.py`) | Request parsing, validation, response shaping |
 | **LangGraph Agent** (`app/agent/graph.py`) | Stateful graph orchestrating all node transitions |
 | **Agent Nodes** (`app/agent/nodes.py`) | Individual processing steps (router/splitter, extractor, store, retriever, answer, combiner) |
 | **ChromaStore** (`app/memory/store.py`) | Persistent vector memory backed by ChromaDB |
-| **Ollama** (external) | LLM inference for routing, extraction, answering, and embedding |
+| **OpenAI-compatible LLM** (external) | LLM inference for routing, extraction, answering, and embedding |
 
 ---
 
@@ -342,7 +346,7 @@ START
   │
   ▼
 router_node
-  ├── Invokes: chat_llm (main Ollama model)
+  ├── Invokes: chat_llm (main LLM model)
   ├── Prompt: SPLITTER_PROMPT — classify AND segment the message
   ├── Parses JSON response; reconciles intents against segments
   ├── Fallback on parse error: intents=["question"], question_segment=full message
@@ -359,7 +363,7 @@ extractor_node  →  store_node  →  retriever_node  →  answer_node  →  com
 ```
 extractor_node
   ├── Guard: skips entirely if "progress_report" not in state["intents"]
-  ├── Invokes: chat_llm (main Ollama model, optional think mode)
+  ├── Invokes: chat_llm (main LLM model, optional think mode)
   ├── Prompt: EXTRACTOR_PROMPT
   ├── Input:  state["report_segment"]  (isolated report text)
   └── Writes: state["extracted_summary"]
@@ -381,7 +385,7 @@ retriever_node
   ├── Guard: skips entirely if "question" not in state["intents"]
   ├── Calls: chroma_store.search_memory(project_id, query, n_results=5)
   │          ├── query = state["question_segment"]  (isolated question text)
-  │          ├── OllamaEmbeddings.embed_documents([query])  (embedding model)
+  │          ├── OpenAI-compatible embeddings.embed_documents([query])  (embedding model)
   │          ├── ChromaDB collection.query() — cosine similarity HNSW index
   │          └── Results sorted by metadata["date"] descending (newest first)
   └── Writes: state["retrieved_docs"]
@@ -439,7 +443,7 @@ chroma_store.import_chunks(project_id, chunks)
 ChromaDB (persistent, ./chroma_db)
   │
   └── One Collection per project_id
-        ├── Embedding function: OllamaEmbeddings (cosine HNSW)
+        ├── Embedding function: Custom embedding function (cosine HNSW)
         └── Document types stored:
              ┌────────────────┬─────────────────────────────────────────────┐
              │ type           │ content                                     │
@@ -451,15 +455,12 @@ ChromaDB (persistent, ./chroma_db)
 ```
 
 ---
-
-## LLM Layer (Ollama)
+## LLM Layer (OpenAI-compatible)
 
 | Client | Config key | Purpose |
 |---|---|---|
-| `chat_llm` | `CHAT_MODEL` | Splitting/classification, extraction, and answering — main model (optional think mode via `CHAT_MODEL_THINK`) |
-| `OllamaEmbeddings` | `EMBEDDING_MODEL` | Vectorises text for ChromaDB indexing and querying |
-
-All clients connect to `OLLAMA_CHAT_URL` with a bearer token (`OLLAMA_BEARER`).
+| `chat_llm` | `CHAT_MODEL` | Splitting/classification, extraction, answering, title generation — main model (optional think mode via `CHAT_MODEL_THINK`) |
+| `EmbeddingInference` | `EMBEDDING_MODEL` | Vectorises text for ChromaDB indexing and querying |
 
 > **Note:** `router_llm` / `CHAT_MODEL_ROUTER` have been removed. The main `chat_llm` now handles both segmentation and all downstream LLM tasks, ensuring the model capable of precise boundary detection is always used for splitting.
 
@@ -517,7 +518,7 @@ Client (Browser / API consumer)
            │ LLM calls                │ vector ops
            ▼                          ▼
 ┌──────────────────┐      ┌──────────────────────────┐
-│  Ollama          │      │  ChromaDB (./chroma_db)  │
+│  OpenAI-compatible LLM  │      │  ChromaDB (./chroma_db)  │
 │  - chat model    │      │  - per-project collection│
 │    (split+answer)│      │  - cosine HNSW index     │
 │  - embed model   │      │  - raw / summary / ref   │

@@ -175,13 +175,13 @@ async def rename_session(session_id: str, body: dict[str, str]) -> dict[str, str
 
 
 async def _generate_title(message: str) -> str:
-    response = chat_llm.invoke(
-        [
+    response = chat_llm.generate_response(
+        messages=[
             SystemMessage(content=TITLE_PROMPT),
             HumanMessage(content=message),
         ]
     )
-    return response.content.strip()
+    return response.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -351,10 +351,10 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
         if is_first_turn:
             try:
                 title_resp = await asyncio.to_thread(
-                    chat_llm.invoke,
-                    [SystemMessage(content=TITLE_PROMPT), HumanMessage(content=user_message)],
+                    chat_llm.generate_response,
+                    messages=[SystemMessage(content=TITLE_PROMPT), HumanMessage(content=user_message)],
                 )
-                await sessions_store.update_title(frozen_session_id, title_resp.content.strip())
+                await sessions_store.update_title(frozen_session_id, title_resp.strip())
                 title_updated = True
             except Exception:
                 pass

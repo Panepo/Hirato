@@ -5,27 +5,23 @@ from typing import Any
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
-from langchain_ollama import OllamaEmbeddings
 
 from app.core.config import settings
+from app.core.embedding import EmbeddingInference
 
-_embedding_fn = OllamaEmbeddings(
-    base_url=settings.OLLAMA_CHAT_URL,
-    model=settings.EMBEDDING_MODEL,
-    client_kwargs={"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}},
-)
+_embedding_inference = EmbeddingInference()
 
 
 def _embed(texts: list[str]) -> list[list[float]]:
-    return _embedding_fn.embed_documents(texts)
+    return _embedding_inference.embed_documents(texts)
 
 
-class _OllamaEmbeddingFunction(chromadb.EmbeddingFunction):
+class _CustomEmbeddingFunction(chromadb.EmbeddingFunction):
     def __call__(self, input: list[str]) -> list[list[float]]:  # noqa: A002
         return _embed(input)
 
 
-_chroma_ef = _OllamaEmbeddingFunction()
+_chroma_ef = _CustomEmbeddingFunction()
 
 
 class ChromaStore:
