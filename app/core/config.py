@@ -12,8 +12,6 @@ class Settings(BaseSettings):
     ROUTER_BASE_URL: str
     ROUTER_API_KEY: str
 
-    CHAT_MODEL_THINK: bool = False
-
     EMBEDDING_MODEL: str
     EMBEDDING_BASE_URL: str
     EMBEDDING_API_KEY: str
@@ -26,9 +24,7 @@ class Settings(BaseSettings):
     RERANKING_BASE_URL: str
     RERANKING_API_KEY: str
 
-    DOCLING_BASE_URL: str
-
-    SERVER_TIMEOUT: int = 180
+    SERVER_TIMEOUT: int = 600
     CHUNK_SIZE: int = 1024
     CHUNK_OVERLAP: int = 128
     VLM_TEMPERATURE: float = 0.1

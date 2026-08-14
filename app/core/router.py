@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
+from app.core.config import settings
 
 # Load environment variables
 load_dotenv()
@@ -20,7 +21,8 @@ class RouterInference:
             model=self.model_name,
             base_url=self.base_url,
             api_key=self.api_key,
-            temperature=self.temperature
+            temperature=self.temperature,
+            timeout=settings.SERVER_TIMEOUT
         )
 
     def generate_response(self, messages: list = None, system_prompt: str = None, temperature: float = None) -> str:

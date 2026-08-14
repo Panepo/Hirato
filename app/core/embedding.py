@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
+from app.core.config import settings
 
 # Load environment variables
 load_dotenv()
@@ -17,7 +18,8 @@ class EmbeddingInference:
         self.embeddings = OpenAIEmbeddings(
             model=self.model_name,
             openai_api_base=self.base_url,
-            openai_api_key=self.api_key
+            openai_api_key=self.api_key,
+            timeout=settings.SERVER_TIMEOUT
         )
 
     def embed_documents(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:

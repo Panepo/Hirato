@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import HumanMessage, SystemMessage
+from app.core.config import settings
 
 # Load environment variables
 load_dotenv()
@@ -20,10 +21,11 @@ class LLMInference:
             model=self.model_name,
             base_url=self.base_url,
             api_key=self.api_key,
-            temperature=self.temperature
+            temperature=self.temperature,
+            timeout=settings.SERVER_TIMEOUT
         )
 
-    def generate_response(self, messages: list = None, system_prompt: str = None, temperature: float = None, max_tokens: int = None) -> str:
+    def generate_response(self, messages: list = None, system_prompt: str = None, temperature: float = None, max_tokens: int = None, think: bool = False) -> str:
         """
         Generate a response from the LLM based on the given messages or prompt.
 
@@ -32,6 +34,7 @@ class LLMInference:
             system_prompt (str, optional): System prompt to set context
             temperature (float, optional): Temperature for the LLM response
             max_tokens (int, optional): Maximum tokens to generate
+            think (bool, optional): Whether to enable thinking for the model. Default is False.
 
         Returns:
             str: The generated response
@@ -73,6 +76,8 @@ class LLMInference:
         bind_kwargs = {"temperature": effective_temperature}
         if max_tokens is not None:
             bind_kwargs["max_tokens"] = max_tokens
+        if think:
+            bind_kwargs["thinking"] = {"type": "enabled"}
         llm_with_temperature = self.llm.bind(**bind_kwargs)
         response = llm_with_temperature.invoke(message_list)
 
@@ -90,7 +95,7 @@ class LLMInference:
         """
         return ChatPromptTemplate.from_template(template)
 
-    def stream_response(self, messages: list = None, system_prompt: str = None, temperature: float = None):
+    def stream_response(self, messages: list = None, system_prompt: str = None, temperature: float = None, think: bool = False, max_tokens: int = None):
         """
         Stream responses from the LLM.
 
@@ -98,6 +103,7 @@ class LLMInference:
             messages (list, optional): List of messages including chat history and tool messages
             system_prompt (str, optional): System prompt to set context
             temperature (float, optional): Temperature for the LLM response
+            think (bool, optional): Whether to enable thinking for the model. Default is False.
 
         Yields:
             str: Chunks of the generated response
@@ -135,8 +141,13 @@ class LLMInference:
         # Use the provided temperature or fall back to the instance temperature
         effective_temperature = temperature if temperature is not None else self.temperature
 
-        # Bind the temperature to the LLM and stream
-        llm_with_temperature = self.llm.bind(temperature=effective_temperature)
+        # Bind the temperature and thinking option to the LLM and stream
+        bind_kwargs = {"temperature": effective_temperature}
+        if think:
+            bind_kwargs["thinking"] = {"type": "enabled"}
+        if max_tokens is not None:
+            bind_kwargs["max_tokens"] = max_tokens
+        llm_with_temperature = self.llm.bind(**bind_kwargs)
 
         # Stream the LLM response
         for chunk in llm_with_temperature.stream(message_list):

@@ -4,6 +4,7 @@ import mimetypes
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from app.core.config import settings
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +23,8 @@ class VLMInference:
             model=self.model_name,
             base_url=self.base_url,
             api_key=self.api_key,
-            temperature=self.temperature
+            temperature=self.temperature,
+            timeout=settings.SERVER_TIMEOUT
         )
 
     def generate_response(self, messages: list = None, system_prompt: str = None, image_input: str = None, temperature: float = None, max_tokens: int = None) -> str:

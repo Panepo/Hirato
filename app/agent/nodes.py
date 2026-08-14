@@ -10,16 +10,17 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, SPLITTER_PROMPT
 from app.core.config import settings
 from app.core.llm import LLMInference
+from app.core.router import RouterInference
 from app.memory.store import chroma_store
 
 # ---------------------------------------------------------------------------
 # LLM clients
 # ---------------------------------------------------------------------------
 
-chat_llm = LLMInference()
+chat_llm = LLMInference(temperature=0.3)
 
 # Fast model — router_node only
-router_llm = LLMInference(temperature=0.3)
+router_llm = RouterInference(temperature=0.1)
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ router_llm = LLMInference(temperature=0.3)
 def router_node(state: dict[str, Any]) -> dict[str, Any]:
     """Classify and segment the user message using router_llm."""
     user_message: str = state["messages"][-1]
-    response = router_llm.generate_response(
+    response = chat_llm.generate_response(
         messages=[
             SystemMessage(content=SPLITTER_PROMPT),
             HumanMessage(content=user_message),
@@ -72,7 +73,7 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
         return {}
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
-    raw = chat_llm.generate_response(
+    raw = router_llm.generate_response(
         messages=[
             SystemMessage(content=EXTRACTOR_PROMPT.format(today=today)),
             HumanMessage(content=report_text),

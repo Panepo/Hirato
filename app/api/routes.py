@@ -15,6 +15,7 @@ from app.agent.graph import secretary_graph
 from app.agent.nodes import (
     answer_node_astream,
     chat_llm,
+    router_llm,
     extractor_node,
     retriever_node,
     router_node,
@@ -175,7 +176,7 @@ async def rename_session(session_id: str, body: dict[str, str]) -> dict[str, str
 
 
 async def _generate_title(message: str) -> str:
-    response = chat_llm.generate_response(
+    response = router_llm.generate_response(
         messages=[
             SystemMessage(content=TITLE_PROMPT),
             HumanMessage(content=message),
@@ -199,8 +200,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
 
     # Load prior messages to build context
     prior_messages = await sessions_store.get_messages(session_id) if session_id else []
-    context_messages: list[str] = [m["content"] for m in prior_messages if m["role"] == "user"]
-    context_messages.append(body.message)
+    context_messages = [body.message]
 
     initial_state = {
         "messages": context_messages,
@@ -258,8 +258,7 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
         session_id = session["id"]
 
     prior_messages = await sessions_store.get_messages(session_id) if session_id else []
-    context_messages: list[str] = [m["content"] for m in prior_messages if m["role"] == "user"]
-    context_messages.append(body.message)
+    context_messages = [body.message]
 
     state: dict = {
         "messages": context_messages,
