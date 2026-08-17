@@ -1,18 +1,33 @@
-ROUTER_PROMPT = """You are a message classifier. Analyse the user message and decide whether it's for saving memory or answering a question.
+ROUTER_PROMPT = """You are a strict intent router. Classify the user message into one of two categories: "save_memory" or "answer_question".
 
-Return a JSON object with these keys:
-- "decision": either "save_memory" or "answer_question"
+### Classification Rules:
+1. "save_memory":
+   - The user provides new information, state updates, preferences, finished tasks, logs, or notes (e.g., "I finished task A", "Remember that X").
+   - PRIORITY RULE: If the message contains BOTH new facts to store AND a question, ALWAYS classify as "save_memory".
 
-Return ONLY a valid JSON object with exactly this key. No explanation, no markdown fences.
+2. "answer_question":
+   - The user is ONLY asking for retrieval, summaries of past context, recommendations, or clarification WITHOUT providing new personal status/facts to record.
 
-Example for a memory save message "memo the following: reviewed PRs and fixed login bug":
-{"decision": "save_memory"}
+### Output Format:
+Return a valid JSON object with:
+- "reasoning": A brief 1-sentence explanation of why it fits the category.
+- "decision": Exactly "save_memory" or "answer_question".
 
-Example for a question message "What blockers did I have last month?":
-{"decision": "answer_question"}
+### Examples:
+- User: "memo the following: reviewed PRs and fixed login bug"
+  {"reasoning": "Contains explicit instruction to record completed tasks.", "decision": "save_memory"}
 
-Example for a mixed message "I finished the auth module this week. What blockers did I have last month?":
-{"decision": "save_memory"}
+- User: "What blockers did I have last month?"
+  {"reasoning": "Pure retrieval query asking about past records without new info.", "decision": "answer_question"}
+
+- User: "I finished the auth module this week. What blockers did I have last month?"
+  {"reasoning": "Mixed message with a new accomplishment log; priority rule applies.", "decision": "save_memory"}
+
+- User: "My favorite language is Rust. Can you write a web server?"
+  {"reasoning": "Contains a new user preference to save alongside a request.", "decision": "save_memory"}
+
+- User: "How does async/await work in Python?"
+  {"reasoning": "Pure informational question with no personal state or memory to store.", "decision": "answer_question"}
 """
 
 SPLITTER_PROMPT = """You are a message classifier and segmenter. Analyse the user message and split it into at most two logical segments:

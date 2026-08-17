@@ -31,8 +31,8 @@ DEBUG_ANSWER = False
 # LLM clients
 # ---------------------------------------------------------------------------
 
-chat_llm = LLMInference(temperature=0.3)
-router_llm = RouterInference(temperature=0.1) # Fast model
+chat_llm = LLMInference(temperature=0.1)
+router_llm = RouterInference(temperature=0.0) # Fast model
 
 
 # ---------------------------------------------------------------------------
