@@ -23,6 +23,7 @@ from app.agent.nodes import (
 )
 from app.agent.prompts import TITLE_PROMPT
 from app.core.config import settings
+from app.core.indexer import IndexerClient
 from app.memory.sessions import sessions_store
 from app.memory.store import chroma_store
 
@@ -367,7 +368,7 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
     )
 
 
-@router.post("/channels/{channel_id}/import")
+@router.post("/channels/{channel_id}/import/json")
 async def import_embedded_json(
     channel_id: str,
     file: UploadFile = File(...),
@@ -398,6 +399,59 @@ async def import_embedded_json(
 
     result = chroma_store.import_chunks(channel_id=channel_id, chunks=chunks)
     return result
+
+
+@router.post("/channels/{channel_id}/import/documents")
+async def import_documents(
+    channel_id: str,
+    files: list[UploadFile] = File(...),
+) -> dict[str, Any]:
+    """Upload multiple documents for indexing and save to channel memory."""
+    indexer_client = IndexerClient()
+
+    imported_count = 0
+    skipped_count = 0
+    failed_files = []
+
+    import tempfile
+    import os
+
+    for file in files:
+        if not file.filename:
+            continue
+
+        # Create a temporary file to store the uploaded document
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
+            content = await file.read()
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+
+        try:
+            # Process document through indexer
+            chunks_data = indexer_client.process_document(tmp_file_path)
+
+            # Import chunks to chroma store
+            if "chunks" in chunks_data and isinstance(chunks_data["chunks"], list):
+                result = chroma_store.import_chunks(channel_id=channel_id, chunks=chunks_data["chunks"])
+                imported_count += result.get("imported", 0)
+                skipped_count += result.get("skipped", 0)
+            else:
+                raise Exception("No chunks found in indexer response")
+
+        except Exception as e:
+            failed_files.append({"file": file.filename, "error": str(e)})
+        finally:
+            # Clean up temporary file
+            if os.path.exists(tmp_file_path):
+                os.remove(tmp_file_path)
+
+    indexer_client.close()
+
+    return {
+        "imported": imported_count,
+        "skipped": skipped_count,
+        "failed_files": failed_files,
+    }
 
 
 @router.delete("/channels/{channel_id}", status_code=204)

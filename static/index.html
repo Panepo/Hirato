@@ -76,6 +76,15 @@
       background: #059669;
     }
 
+    #btn-import-docs {
+      background: #10b981;
+      color: #fff;
+    }
+
+    #btn-import-docs:hover {
+      background: #059669;
+    }
+
     #btn-delete-channel {
       background: #ef4444;
       color: #fff;
@@ -763,6 +772,70 @@
       color: #1a1a1a;
       box-sizing: border-box;
     }
+
+    /* ---- Indexing overlay ---- */
+    #indexing-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(128, 128, 128, 0.5);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+    }
+
+    #indexing-overlay.show {
+      display: flex;
+    }
+
+    #indexing-indicator {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      pointer-events: auto;
+    }
+
+    #indexing-indicator .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #e2e8f0;
+      border-top: 4px solid #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    #indexing-indicator .text {
+      font-size: 1rem;
+      color: #1a1a1a;
+      font-weight: 500;
+    }
+
+    /* Disable all interactions on the page when overlay is shown */
+    body.indexing-active {
+      pointer-events: none;
+      user-select: none;
+    }
+
+    body.indexing-active #indexing-overlay,
+    body.indexing-active #indexing-overlay * {
+      pointer-events: auto;
+    }
   </style>
 
 <body>
@@ -776,7 +849,7 @@
     <button id="btn-new-channel">+ New Channel</button>
     <button id="btn-delete-channel" disabled>🗑 Delete Channel</button>
     <button id="btn-browse-memory" disabled style="background:#6366f1;color:#fff;">🗂 Memory</button>
-    <button id="btn-import">⬆ Import JSON</button>
+    <button id="btn-import-docs">📄 Import Documents</button>
   </div>
 
   <!-- Main layout -->
@@ -818,8 +891,17 @@
       </div>
 
       <!-- Hidden file inputs -->
-      <input type="file" id="file-input" accept=".json" style="display:none" />
+      <input type="file" id="file-input-docs" multiple accept=".pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx"
+        style="display:none" />
       <input type="file" id="memory-file-input" accept=".json" style="display:none" />
+    </div>
+  </div>
+
+  <!-- Indexing Overlay -->
+  <div id="indexing-overlay">
+    <div id="indexing-indicator">
+      <div class="spinner"></div>
+      <div class="text">Indexing documents...</div>
     </div>
   </div>
 
@@ -898,6 +980,9 @@
     const memoryDetailContent = document.getElementById('memory-detail-content');
     const memoryDetailClose = document.getElementById('memory-detail-close');
     const memoryDetailEdit = document.getElementById('memory-detail-edit');
+    const btnImportDocs = document.getElementById('btn-import-docs');
+    const fileInputDocs = document.getElementById('file-input-docs');
+    const indexingOverlay = document.getElementById('indexing-overlay');
     const memoryDetailSave = document.getElementById('memory-detail-save');
     const memoryDetailCancelEdit = document.getElementById('memory-detail-cancel-edit');
     const memoryDetailEditArea = document.getElementById('memory-detail-edit-area');
@@ -1073,12 +1158,30 @@
         const channels = await res.json();
         const current = channelSelect.value;
         channelSelect.innerHTML = '<option value="">— select channel —</option>';
+        let firstChannel = null;
         channels.forEach(c => {
           const opt = document.createElement('option');
           opt.value = c; opt.textContent = c;
           if (c === current) opt.selected = true;
+          if (!firstChannel) firstChannel = c;
           channelSelect.appendChild(opt);
         });
+
+        // If no channel is selected but we have channels, select the first one by default
+        if (!channelSelect.value && channels.length > 0) {
+          channelSelect.value = firstChannel;
+        }
+
+        // Update button states based on current selection
+        btnDeleteChannel.disabled = !channelSelect.value;
+        btnBrowseMemory.disabled = !channelSelect.value;
+
+        // Load sessions if a channel is selected
+        if (channelSelect.value) {
+          currentSessionId = null;
+          chatArea.innerHTML = '';
+          loadSessions(channelSelect.value);
+        }
       } catch (e) { showToast('Failed to load channels.'); }
     }
     loadChannels();
@@ -1459,54 +1562,76 @@
       } catch (e) { showToast(`Delete failed: ${e.message}`); }
     });
 
-    // ---- Import JSON ----
-    btnImport.addEventListener('click', () => {
+    // ---- Import Documents ----
+    btnImportDocs.addEventListener('click', () => {
       if (!channelSelect.value) { showToast('Select a channel first.'); return; }
-      fileInput.value = '';
-      fileInput.click();
+      fileInputDocs.value = '';
+      fileInputDocs.click();
     });
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files[0];
-      if (!file) return;
+    fileInputDocs.addEventListener('change', async () => {
+      const files = fileInputDocs.files;
+      if (!files || files.length === 0) return;
       const channelId = channelSelect.value;
       const form = new FormData();
-      form.append('file', file);
+      for (let i = 0; i < files.length; i++) {
+        form.append('files', files[i]);
+      }
+
+      // Show indexing overlay and disable UI interactions
+      indexingOverlay.classList.add('show');
+      document.body.classList.add('indexing-active');
+
       try {
-        showToast('Importing…');
-        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/import`, {
+        const res = await fetch(`api/channels/${encodeURIComponent(channelId)}/import/documents`, {
           method: 'POST', body: form,
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
-        showToast(`Imported: ${data.imported}, Skipped: ${data.skipped}`);
+
+        let message = `Processed: ${data.imported} chunks, Skipped: ${data.skipped}`;
+        if (data.failed_files && data.failed_files.length > 0) {
+          message += `. Failed: ${data.failed_files.length} files`;
+        }
+        showToast(message);
+
+        if (data.failed_files && data.failed_files.length > 0) {
+          console.error('Failed files:', data.failed_files);
+        }
       } catch (e) { showToast(`Import failed: ${e.message}`); }
+      finally {
+        // Hide indexing overlay and re-enable UI interactions
+        indexingOverlay.classList.remove('show');
+        document.body.classList.remove('indexing-active');
+        // Clear the file input
+        fileInputDocs.value = '';
+      }
     });
 
-    // ---- Chat ----
-    function appendBubble(text, role, isThinking = false) {
-      const div = document.createElement('div');
-      div.className = `bubble ${role}${isThinking ? ' thinking' : ''}`;
+    function appendBubble(text, role) {
+      const row = document.createElement('div');
+      row.className = `bubble-row ${role}`;
 
-      const content = document.createElement('span');
-      content.className = 'bubble-content';
-      content.textContent = text;
+      const bubble = document.createElement('div');
+      bubble.className = `bubble ${role}`;
+      bubble.textContent = text;
 
-      if (!isThinking && role !== 'thinking') {
+      row.appendChild(bubble);
+
+      if (role === 'secretary') {
         const btn = document.createElement('button');
-        btn.className = 'bubble-copy-btn';
+        btn.className = 'copy-btn';
         btn.title = 'Copy message';
         btn.textContent = '📋';
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           navigator.clipboard.writeText(text).then(() => showToast('Copied!'));
         });
-        div.appendChild(btn);
+        row.appendChild(btn);
       }
 
-      div.appendChild(content);
-      chatArea.appendChild(div);
+      chatArea.appendChild(row);
       chatArea.scrollTop = chatArea.scrollHeight;
-      return div;
+      return row;
     }
 
     function appendStreamingBubble() {
