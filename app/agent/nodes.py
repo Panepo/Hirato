@@ -7,73 +7,101 @@ from typing import Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, SPLITTER_PROMPT
+from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
 from app.core.config import settings
 from app.core.llm import LLMInference
 from app.core.router import RouterInference
 from app.memory.store import chroma_store
 
 # ---------------------------------------------------------------------------
+# CONFIG
+# ---------------------------------------------------------------------------
+STORE_SAVE_RAW = False
+
+# ---------------------------------------------------------------------------
+# DEBUG
+# ---------------------------------------------------------------------------
+DEBUG_ROUTER = False
+DEBUG_EXTRACTOR = False
+DEBUG_STORE = False
+DEBUG_RETRIEVER = False
+DEBUG_ANSWER = False
+
+# ---------------------------------------------------------------------------
 # LLM clients
 # ---------------------------------------------------------------------------
 
 chat_llm = LLMInference(temperature=0.3)
-
-# Fast model — router_node only
-router_llm = RouterInference(temperature=0.1)
+router_llm = RouterInference(temperature=0.1) # Fast model
 
 
 # ---------------------------------------------------------------------------
 # Node functions
 # ---------------------------------------------------------------------------
-
+def compress_node(state: dict[str, Any]) -> dict[str, Any]:
+    return state
 
 def router_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Classify and segment the user message using router_llm."""
+    """Classify the user message and decide if it's to save memory or answer a question."""
     user_message: str = state["messages"][-1]
-    response = chat_llm.generate_response(
+    report_segment: str | None = ""
+    question_segment: str | None = ""
+
+    if DEBUG_ROUTER:
+      print(f"Router node inputs: {user_message}")
+
+    response = router_llm.generate_response(
         messages=[
-            SystemMessage(content=SPLITTER_PROMPT),
+            SystemMessage(content=ROUTER_PROMPT),
             HumanMessage(content=user_message),
-        ]
+        ],
+        max_tokens=256
     )
     try:
+        if DEBUG_ROUTER:
+          print(f"Router LLM raw response: {response}")
+
         raw = response if isinstance(response, str) else ""
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         data = json.loads(raw)
-        intents: list[str] = data.get("intents", [])
-        report_segment: str | None = data.get("report_segment") or None
-        question_segment: str | None = data.get("question_segment") or None
+        decision: str = data.get("decision", "answer_question")
+
+        if decision == "save_memory":
+            report_segment = state["messages"][-1]
+        elif decision == "answer_question":
+            question_segment = state["messages"][-1]
+
+        # Ensure decision is valid
+        if decision not in ["save_memory", "answer_question"]:
+            decision = "answer_question"
+            question_segment = state["messages"][-1]
+
     except (json.JSONDecodeError, AttributeError):
-        intents = []
-        report_segment = None
-        question_segment = None
+        decision = "answer_question"
 
-    # Reconcile: remove an intent when its segment is missing
-    if "progress_report" in intents and not report_segment:
-        intents = [i for i in intents if i != "progress_report"]
-    if "question" in intents and not question_segment:
-        intents = [i for i in intents if i != "question"]
-
-    # Fallback: treat entire message as a question
-    if not intents:
-        intents = ["question"]
-        question_segment = user_message
-
-    return {
-        "intents": intents,
+    response = {
+        "decision": decision,
         "report_segment": report_segment,
         "question_segment": question_segment,
     }
 
+    if DEBUG_ROUTER:
+      print(f"Router node outputs: {response}")
+
+    return response
+
 
 def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     """Extract structured summary from the report segment."""
-    if "progress_report" not in state.get("intents", []):
+    if state.get("decision") != "save_memory":
         return {}
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
-    raw = router_llm.generate_response(
+
+    if DEBUG_EXTRACTOR:
+      print(f"Extractor node inputs: {report_text}")
+
+    raw = chat_llm.generate_response(
         messages=[
             SystemMessage(content=EXTRACTOR_PROMPT.format(today=today)),
             HumanMessage(content=report_text),
@@ -87,6 +115,9 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
         if not week_val or week_val.lower() in ("unspecified", "unknown", "n/a", ""):
             extracted["week"] = today
         raw = json.dumps(extracted, ensure_ascii=False)
+        if DEBUG_EXTRACTOR:
+          print(f"Extractor node outputs: {raw}")
+
     except (json.JSONDecodeError, AttributeError):
         pass
     return {"extracted_summary": raw}
@@ -94,38 +125,48 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
 
 def store_node(state: dict[str, Any]) -> dict[str, Any]:
     """Persist report segment + extracted summary into ChromaDB."""
-    if "progress_report" not in state.get("intents", []):
+    if state.get("decision") != "save_memory":
         return {}
     channel_id: str = state["channel_id"]
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
 
-    chroma_store.add_memory(
-        channel_id=channel_id,
-        content=report_text,
-        metadata={"date": today, "type": "raw"},
-    )
+    if STORE_SAVE_RAW:
+        chroma_store.add_memory(
+            channel_id=channel_id,
+            content=report_text,
+            metadata={"date": today, "type": "raw"},
+        )
+
     chroma_store.add_memory(
         channel_id=channel_id,
         content=state.get("extracted_summary", ""),
         metadata={"date": today, "type": "summary"},
     )
-    return {"store_response": "Your progress report has been saved successfully."}
+    return {"store_response": "Your progress report has been saved successfully.", "response": "Your progress report has been saved successfully."}
 
 
 def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     """Retrieve relevant documents from ChromaDB using the question segment."""
-    if "question" not in state.get("intents", []):
+    if state.get("decision") != "answer_question":
         return {}
     channel_id: str = state["channel_id"]
     query: str = state.get("question_segment") or state["messages"][-1]
+
+    if DEBUG_RETRIEVER:
+        print(f"Retriever node inputs: {query}")
+
     docs = chroma_store.search_memory(channel_id=channel_id, query=query, n_results=5)
+
+    if DEBUG_RETRIEVER:
+        print(f"Retriever node outputs: {docs}")
+
     return {"retrieved_docs": docs}
 
 
 def answer_node(state: dict[str, Any]) -> dict[str, Any]:
     """Generate an answer using retrieved context docs."""
-    if "question" not in state.get("intents", []):
+    if state.get("decision") != "answer_question":
         return {}
     question: str = state.get("question_segment") or state["messages"][-1]
     docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
@@ -142,28 +183,22 @@ def answer_node(state: dict[str, Any]) -> dict[str, Any]:
         context_text = "\n\n---\n\n".join(parts)
 
     system_content = ANSWER_PROMPT.format(context=context_text)
+    if DEBUG_ANSWER:
+        print(f"Answer node inputs: {system_content}")
     response = chat_llm.generate_response(
         messages=[
             SystemMessage(content=system_content),
             HumanMessage(content=question),
         ]
     )
-    return {"answer_response": response.strip()}
-
-
-def combiner_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Combine store and answer responses into a single final response."""
-    parts: list[str] = []
-    if state.get("store_response"):
-        parts.append(state["store_response"])
-    if state.get("answer_response"):
-        parts.append(state["answer_response"])
-    return {"response": "\n\n".join(parts) if parts else "No response generated."}
+    if DEBUG_ANSWER:
+        print(f"Answer node outputs: {response}")
+    return {"answer_response": response.strip(), "response": response.strip()}
 
 
 async def answer_node_astream(state: dict[str, Any]) -> AsyncGenerator[str, None]:
     """Stream answer tokens from the LLM for the streaming chat endpoint."""
-    if "question" not in state.get("intents", []):
+    if state.get("decision") != "answer_question":
         return
     question: str = state.get("question_segment") or state["messages"][-1]
     docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
@@ -181,6 +216,8 @@ async def answer_node_astream(state: dict[str, Any]) -> AsyncGenerator[str, None
 
     system_content = ANSWER_PROMPT.format(context=context_text)
 
+    if DEBUG_ANSWER:
+        print(f"Answer node inputs: {system_content}")
     # Use stream_response instead of astream
     messages = [
         SystemMessage(content=system_content),

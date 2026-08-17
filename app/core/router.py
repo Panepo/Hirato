@@ -25,7 +25,7 @@ class RouterInference:
             timeout=settings.SERVER_TIMEOUT
         )
 
-    def generate_response(self, messages: list = None, system_prompt: str = None, temperature: float = None) -> str:
+    def generate_response(self, messages: list = None, system_prompt: str = None, temperature: float = None, max_tokens: int = None, think: bool = False) -> str:
         """
         Generate a response from the LLM based on the given messages or prompt.
 
@@ -71,7 +71,12 @@ class RouterInference:
         effective_temperature = temperature if temperature is not None else self.temperature
 
         # Bind the temperature to the LLM and invoke
-        llm_with_temperature = self.llm.bind(temperature=effective_temperature)
+        bind_kwargs = {"temperature": effective_temperature}
+        if max_tokens is not None:
+            bind_kwargs["max_tokens"] = max_tokens
+        if think:
+            bind_kwargs["thinking"] = {"type": "enabled"}
+        llm_with_temperature = self.llm.bind(**bind_kwargs)
         response = llm_with_temperature.invoke(message_list)
 
         return response.content
@@ -88,7 +93,7 @@ class RouterInference:
         """
         return ChatPromptTemplate.from_template(template)
 
-    def stream_response(self, messages: list = None, system_prompt: str = None, temperature: float = None):
+    def stream_response(self, messages: list = None, system_prompt: str = None, temperature: float = None, think: bool = False, max_tokens: int = None):
         """
         Stream responses from the LLM.
 
@@ -133,8 +138,13 @@ class RouterInference:
         # Use the provided temperature or fall back to the instance temperature
         effective_temperature = temperature if temperature is not None else self.temperature
 
-        # Bind the temperature to the LLM and stream
-        llm_with_temperature = self.llm.bind(temperature=effective_temperature)
+        # Bind the temperature and thinking option to the LLM and stream
+        bind_kwargs = {"temperature": effective_temperature}
+        if think:
+            bind_kwargs["thinking"] = {"type": "enabled"}
+        if max_tokens is not None:
+            bind_kwargs["max_tokens"] = max_tokens
+        llm_with_temperature = self.llm.bind(**bind_kwargs)
 
         # Stream the LLM response
         for chunk in llm_with_temperature.stream(message_list):

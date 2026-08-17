@@ -310,8 +310,8 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
             full_response_parts.append(store_resp)
             yield f"data: {json.dumps({'type': 'token', 'content': store_resp})}\n\n"
 
-        # Stream the answer if there is a question intent
-        if "question" in frozen_state.get("intents", []):
+        # Stream the answer if the router decided to answer a question
+        if frozen_state.get("decision") == "answer_question":
             if store_resp:
                 sep = "\n\n"
                 full_response_parts.append(sep)

@@ -1,3 +1,20 @@
+ROUTER_PROMPT = """You are a message classifier. Analyse the user message and decide whether it's for saving memory or answering a question.
+
+Return a JSON object with these keys:
+- "decision": either "save_memory" or "answer_question"
+
+Return ONLY a valid JSON object with exactly this key. No explanation, no markdown fences.
+
+Example for a memory save message "memo the following: reviewed PRs and fixed login bug":
+{"decision": "save_memory"}
+
+Example for a question message "What blockers did I have last month?":
+{"decision": "answer_question"}
+
+Example for a mixed message "I finished the auth module this week. What blockers did I have last month?":
+{"decision": "save_memory"}
+"""
+
 SPLITTER_PROMPT = """You are a message classifier and segmenter. Analyse the user message and split it into at most two logical segments:
 - "report_segment": text where the user is reporting what they did, accomplished, or worked on (weekly/daily update, status report, blockers, next steps). Also treat phrases like "memo the following", "note the following", "record this", "log this", "remember the following", or any similar instruction to store/memo information as a report_segment trigger — the content that follows such a phrase belongs in report_segment. Set to null if no such content exists.
 - "question_segment": text where the user is asking for information, querying past work, or seeking an answer. Set to null if no such content exists.

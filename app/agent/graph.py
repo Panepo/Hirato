@@ -7,7 +7,6 @@ from typing_extensions import TypedDict
 
 from app.agent.nodes import (
     answer_node,
-    combiner_node,
     extractor_node,
     retriever_node,
     router_node,
@@ -18,7 +17,7 @@ from app.agent.nodes import (
 class AgentState(TypedDict):
     messages: list[str]
     channel_id: str
-    intents: list[str]
+    decision: str  # "save_memory" or "answer_question"
     report_segment: Optional[str]
     question_segment: Optional[str]
     extracted_summary: Optional[str]
@@ -28,6 +27,15 @@ class AgentState(TypedDict):
     response: Optional[str]
 
 
+def route_decision(state: AgentState) -> str:
+    """Route to either save_memory or answer_question based on router_node decision."""
+    decision = state.get("decision", "answer_question")
+    if decision == "save_memory":
+        return "extractor_node"
+    else:
+        return "retriever_node"
+
+
 builder = StateGraph(AgentState)
 
 builder.add_node("router_node", router_node)
@@ -35,14 +43,25 @@ builder.add_node("extractor_node", extractor_node)
 builder.add_node("store_node", store_node)
 builder.add_node("retriever_node", retriever_node)
 builder.add_node("answer_node", answer_node)
-builder.add_node("combiner_node", combiner_node)
 
 builder.add_edge(START, "router_node")
-builder.add_edge("router_node", "extractor_node")
+
+# Conditional routing based on decision
+builder.add_conditional_edges(
+    "router_node",
+    route_decision,
+    {
+        "extractor_node": "extractor_node",
+        "retriever_node": "retriever_node",
+    }
+)
+
+# Path 1: save_memory -> extractor -> store -> END
 builder.add_edge("extractor_node", "store_node")
-builder.add_edge("store_node", "retriever_node")
+builder.add_edge("store_node", END)
+
+# Path 2: answer_question -> retriever -> answer -> END
 builder.add_edge("retriever_node", "answer_node")
-builder.add_edge("answer_node", "combiner_node")
-builder.add_edge("combiner_node", END)
+builder.add_edge("answer_node", END)
 
 secretary_graph = builder.compile()
