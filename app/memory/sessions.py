@@ -132,6 +132,24 @@ class SQLiteSessionStore:
             await db.commit()
         return cursor.rowcount > 0
 
+    async def delete_channel_sessions(self, channel_id: str) -> int:
+        """Delete all sessions and their messages for a given channel."""
+        async with aiosqlite.connect(self._db_path) as db:
+            # First delete all messages for sessions in this channel
+            await db.execute(
+                """
+                DELETE FROM messages
+                WHERE session_id IN (
+                    SELECT id FROM sessions WHERE channel_id = ?
+                )
+                """,
+                (channel_id,),
+            )
+            # Then delete all sessions for this channel
+            cursor = await db.execute("DELETE FROM sessions WHERE channel_id=?", (channel_id,))
+            await db.commit()
+        return cursor.rowcount
+
     async def update_title(self, session_id: str, title: str) -> None:
         now = _now_iso()
         async with aiosqlite.connect(self._db_path) as db:

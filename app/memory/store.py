@@ -141,14 +141,20 @@ class ChromaStore:
                 continue
             to_add_ids.append(chunk_id)
             to_add_docs.append(chunk["chunk_text_embedded"])
+
+            # Extract title, tags, and section from chunk
+            chunk_title = chunk.get("chunk_title", "Reference document")
+            chunk_tags = chunk.get("chunk_tags", ["reference_doc"])
+            section_title = chunk.get("section_title", "")
+
             to_add_metas.append(
                 {
                     "date": "1970-01-01",
                     "type": "reference_doc",
                     "source": chunk.get("source", "reference_doc"),
-                    "section": chunk.get("section", ""),
-                    "title": chunk.get("section", "Reference document"),
-                    "tags": json.dumps(["reference_doc"]),
+                    "section": section_title,
+                    "title": chunk_title,
+                    "tags": json.dumps(ChromaStore._normalize_tags(chunk_tags), ensure_ascii=False),
                 }
             )
 

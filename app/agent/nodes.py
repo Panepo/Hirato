@@ -22,7 +22,7 @@ STORE_SAVE_RAW = False
 # DEBUG
 # ---------------------------------------------------------------------------
 DEBUG_ROUTER = False
-DEBUG_EXTRACTOR = True
+DEBUG_EXTRACTOR = False
 DEBUG_STORE = False
 DEBUG_RETRIEVER = False
 DEBUG_ANSWER = False

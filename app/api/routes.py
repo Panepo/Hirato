@@ -90,6 +90,8 @@ async def create_channel(body: NewChannelRequest) -> dict[str, str]:
 async def delete_channel(channel_id: str) -> dict[str, bool]:
     try:
         chroma_store.delete_channel(channel_id)
+        # Delete all chat sessions belonging to this channel
+        await sessions_store.delete_channel_sessions(channel_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
@@ -318,12 +320,18 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
 
     async def event_generator():
         full_response_parts: list[str] = []
+        gen_start = time.perf_counter()
+        first_chunk_at: float | None = None
+        last_chunk_at: float | None = None
 
         yield f"data: {json.dumps({'type': 'session', 'session_id': frozen_session_id})}\n\n"
 
         # Emit store response (progress report ack) immediately if present
         store_resp: str | None = frozen_state.get("store_response")
         if store_resp:
+            now = time.perf_counter()
+            first_chunk_at = now
+            last_chunk_at = now
             full_response_parts.append(store_resp)
             yield f"data: {json.dumps({'type': 'token', 'content': store_resp})}\n\n"
 
@@ -334,9 +342,6 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
                 full_response_parts.append(sep)
                 yield f"data: {json.dumps({'type': 'token', 'content': sep})}\n\n"
 
-            gen_start = time.perf_counter()
-            first_chunk_at: float | None = None
-            last_chunk_at: float | None = None
             answer_chunks: list[str] = []
 
             async for chunk in answer_node_astream(frozen_state):
@@ -348,13 +353,14 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
                 full_response_parts.append(chunk)
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
-            ttfw = round(first_chunk_at - gen_start, 2) if first_chunk_at is not None else 0.0
-            total = round((last_chunk_at or gen_start) - gen_start, 2)
-            gen_duration = round((last_chunk_at - first_chunk_at), 2) if (last_chunk_at and first_chunk_at and last_chunk_at > first_chunk_at) else 0.01
-            word_count = len("".join(answer_chunks).split())
-            wps = round(word_count / gen_duration, 1) if gen_duration > 0 else 0.0
+        # Always report timing metrics for whatever content was produced above
+        ttfw = round(first_chunk_at - gen_start, 2) if first_chunk_at is not None else 0.0
+        total = round((last_chunk_at or gen_start) - gen_start, 2)
+        gen_duration = round((last_chunk_at - first_chunk_at), 2) if (last_chunk_at and first_chunk_at and last_chunk_at > first_chunk_at) else 0.01
+        word_count = len("".join(full_response_parts).split())
+        wps = round(word_count / gen_duration, 1) if gen_duration > 0 else 0.0
 
-            yield f"data: {json.dumps({'type': 'metrics', 'ttfw': ttfw, 'wps': wps, 'total': total})}\n\n"
+        yield f"data: {json.dumps({'type': 'metrics', 'ttfw': ttfw, 'wps': wps, 'total': total})}\n\n"
 
         full_response = "".join(full_response_parts) or "No response generated."
 
@@ -436,11 +442,17 @@ async def import_documents(
         if not file.filename:
             continue
 
-        # Create a temporary file to store the uploaded document
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
+        # Create a temporary file to store the uploaded document with the original filename
+        base_filename = os.path.basename(file.filename)
+        tmp_file_path = os.path.join(tempfile.gettempdir(), base_filename)
+
+        # Remove if exists to ensure a clean write
+        if os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
+
+        with open(tmp_file_path, 'wb') as tmp_file:
             content = await file.read()
             tmp_file.write(content)
-            tmp_file_path = tmp_file.name
 
         try:
             # Process document through indexer
@@ -474,5 +486,7 @@ async def import_documents(
 async def delete_channel_nocontent(channel_id: str) -> None:
     try:
         chroma_store.delete_channel(channel_id)
+        # Delete all chat sessions belonging to this channel
+        await sessions_store.delete_channel_sessions(channel_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Channel not found: {exc}") from exc
