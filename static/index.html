@@ -278,12 +278,17 @@
       color: #475569;
     }
 
+    .bubble-row {
+      display: flex;
+      width: 100%;
+    }
+
     .bubble-row.user {
-      align-self: flex-end;
+      justify-content: flex-end;
     }
 
     .bubble-row.secretary {
-      align-self: flex-start;
+      justify-content: flex-start;
     }
 
     .bubble.user {
@@ -1876,42 +1881,47 @@
       }
     });
 
-    function appendBubble(text, role) {
+    function createBubble(role) {
       const row = document.createElement('div');
       row.className = `bubble-row ${role}`;
 
       const bubble = document.createElement('div');
       bubble.className = `bubble ${role}`;
-      bubble.textContent = text;
+
+      const content = document.createElement('div');
+      content.className = 'bubble-content';
+      bubble.appendChild(content);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'bubble-copy-btn';
+      copyBtn.title = 'Copy message';
+      copyBtn.textContent = '📋';
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(content.textContent).then(() => showToast('Copied!'));
+      });
+      bubble.appendChild(copyBtn);
 
       row.appendChild(bubble);
+      return { row, bubble, content };
+    }
 
-      if (role === 'secretary') {
-        const btn = document.createElement('button');
-        btn.className = 'copy-btn';
-        btn.title = 'Copy message';
-        btn.textContent = '📋';
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          navigator.clipboard.writeText(text).then(() => showToast('Copied!'));
-        });
-        row.appendChild(btn);
-      }
-
+    function appendBubble(text, role) {
+      const { row, content } = createBubble(role);
+      content.textContent = text;
       chatArea.appendChild(row);
       chatArea.scrollTop = chatArea.scrollHeight;
       return row;
     }
 
     function appendStreamingBubble() {
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble secretary';
+      const { row, bubble, content } = createBubble('secretary');
       const metricsBar = document.createElement('div');
       metricsBar.className = 'metrics-bar';
-      chatArea.appendChild(bubble);
+      chatArea.appendChild(row);
       chatArea.appendChild(metricsBar);
       chatArea.scrollTop = chatArea.scrollHeight;
-      return { bubble, metricsBar };
+      return { bubble, content, metricsBar };
     }
 
     async function sendMessage() {
@@ -1947,8 +1957,8 @@
       msgInput.style.height = 'auto';
       btnSend.disabled = true;
 
-      const { bubble: responseBubble, metricsBar } = appendStreamingBubble();
-      responseBubble.textContent = '';
+      const { content: responseContent, metricsBar } = appendStreamingBubble();
+      responseContent.textContent = '';
       metricsBar.textContent = 'Generating\u2026';
 
       try {
@@ -1989,7 +1999,7 @@
                 sessionUpdated = true;
 
               } else if (event.type === 'token') {
-                responseBubble.textContent += event.content;
+                responseContent.textContent += event.content;
                 chatArea.scrollTop = chatArea.scrollHeight;
 
               } else if (event.type === 'metrics') {
@@ -2010,8 +2020,8 @@
                     }
                   } catch { /* best-effort */ }
                 }
-                if (!responseBubble.textContent) {
-                  responseBubble.textContent = 'No response generated.';
+                if (!responseContent.textContent) {
+                  responseContent.textContent = 'No response generated.';
                 }
                 if (!metricsBar.textContent.startsWith('\u23F1')) {
                   metricsBar.textContent = '';
@@ -2021,7 +2031,7 @@
           }
         }
       } catch (e) {
-        responseBubble.textContent = `Error: ${e.message}`;
+        responseContent.textContent = `Error: ${e.message}`;
         metricsBar.textContent = '';
       } finally {
         btnSend.disabled = false;

@@ -1,0 +1,44 @@
+services:
+  hirato:
+    image: hirato:latest
+    container_name: hirato
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - fukae
+    volumes:
+      - ./hirato-chroma:/app/chroma_db
+      - ./hirato-data:/app/data
+    environment:
+      - PORT=${PORT}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ACCESS_CODE=${TELEGRAM_ACCESS_CODE}
+      - CHAT_MODEL=${CHAT_MODEL}
+      - CHAT_BASE_URL=${CHAT_BASE_URL}
+      - CHAT_API_KEY=${CHAT_API_KEY}
+      - ROUTER_MODEL=${ROUTER_MODEL}
+      - ROUTER_BASE_URL=${ROUTER_BASE_URL}
+      - ROUTER_API_KEY=${ROUTER_API_KEY}
+      - VISION_CHAT_MODEL=${VISION_CHAT_MODEL}
+      - VISION_CHAT_BASE_URL=${VISION_CHAT_BASE_URL}
+      - VISION_CHAT_API_KEY=${VISION_CHAT_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL}
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY}
+      - RERANKING_MODEL=${RERANKING_MODEL}
+      - RERANKING_BASE_URL=${RERANKING_BASE_URL}
+      - RERANKING_API_KEY=${RERANKING_API_KEY}
+      - INDEXER_BASE_URL=${INDEXER_BASE_URL}
+      - INDEXER_API_KEY=${INDEXER_API_KEY}
+      - SERVER_TIMEOUT=${SERVER_TIMEOUT}
+      - CHUNK_SIZE=${CHUNK_SIZE}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP}
+      - VLM_TEMPERATURE=${VLM_TEMPERATURE}
+      - VLM_MAX_TOKENS=${VLM_MAX_TOKENS}
+      - CHROMA_PERSIST_PATH=/app/chroma_db
+      - SESSIONS_DB_PATH=/app/data/sessions.db
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
