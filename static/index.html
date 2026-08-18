@@ -278,15 +278,21 @@
       color: #475569;
     }
 
-    .bubble.user {
+    .bubble-row.user {
       align-self: flex-end;
+    }
+
+    .bubble-row.secretary {
+      align-self: flex-start;
+    }
+
+    .bubble.user {
       background: #3b82f6;
       color: #fff;
       border-bottom-right-radius: 2px;
     }
 
     .bubble.secretary {
-      align-self: flex-start;
       background: #fff;
       color: #1a1a1a;
       border-bottom-left-radius: 2px;
@@ -407,7 +413,7 @@
       font-weight: 600;
     }
 
-    .modal input,
+    .modal input:not([type="checkbox"]),
     .modal textarea {
       width: 100%;
       border: 1px solid #cbd5e1;
@@ -604,6 +610,31 @@
       color: #475569;
     }
 
+    .memory-detail-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-top: 0.2rem;
+    }
+
+    .memory-detail-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.35rem;
+    }
+
+    .memory-item-body {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .memory-item-title {
+      font-size: 0.85rem;
+      color: #1a1a1a;
+      margin-bottom: 2px;
+    }
+
     .memory-item-preview {
       font-size: 0.85rem;
       color: #1a1a1a;
@@ -616,6 +647,29 @@
       font-size: 0.75rem;
       color: #64748b;
       margin-top: 2px;
+    }
+
+    .memory-item-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .memory-tag-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 500;
+      padding: 1px 5px;
+      border-radius: 10px;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .memory-checkbox {
+      width: auto;
+      margin-top: 4px;
+      flex-shrink: 0;
     }
 
     .btn-delete-memory {
@@ -915,6 +969,12 @@
           <h2>Memory Browser</h2>
           <span id="memory-count"></span>
         </div>
+        <div id="memory-selection-bar"
+          style="display:none; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;">
+          <input type="checkbox" id="select-all-checkbox" class="memory-checkbox" title="Select all memories">
+          <label for="select-all-checkbox">Select All</label>
+          <button id="bulk-delete-btn" style="background:#ef4444;color:#fff;display:none;">Delete Selected</button>
+        </div>
         <div id="memory-loading" style="display:none">Loading…</div>
         <div id="memory-empty" style="display:none">No memories stored for this channel.</div>
         <div id="memory-list" class="memory-list" style="display:none"></div>
@@ -932,6 +992,8 @@
           <span id="memory-detail-badge" class="memory-type-badge"></span>
           <span id="memory-detail-id"></span>
         </div>
+        <div id="memory-detail-title" class="memory-detail-title"></div>
+        <div id="memory-detail-tags" class="memory-detail-tags"></div>
         <div id="memory-detail-meta" class="memory-item-meta"></div>
         <div id="memory-detail-content" class="memory-detail-content"></div>
         <textarea id="memory-detail-edit-area" class="memory-detail-edit-area" style="display:none;"
@@ -976,6 +1038,8 @@
     const memoryDetailBack = document.getElementById('memory-detail-back');
     const memoryDetailBadge = document.getElementById('memory-detail-badge');
     const memoryDetailId = document.getElementById('memory-detail-id');
+    const memoryDetailTitle = document.getElementById('memory-detail-title');
+    const memoryDetailTags = document.getElementById('memory-detail-tags');
     const memoryDetailMeta = document.getElementById('memory-detail-meta');
     const memoryDetailContent = document.getElementById('memory-detail-content');
     const memoryDetailClose = document.getElementById('memory-detail-close');
@@ -989,6 +1053,9 @@
     const btnMemoryExport = document.getElementById('memory-export-btn');
     const btnMemoryImport = document.getElementById('memory-import-btn');
     const memoryFileInput = document.getElementById('memory-file-input');
+    const memorySelectionBar = document.getElementById('memory-selection-bar');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
 
     // ---- State ----
     let currentSessionId = null;
@@ -1230,18 +1297,70 @@
     });
 
     // ---- Memory Browser ----
+    // State tracking for selected memory IDs
+    let selectedMemoryIds = new Set();
+
+    function normalizeMemoryTags(rawTags) {
+      if (!rawTags) return [];
+      const tags = Array.isArray(rawTags) ? rawTags : [rawTags];
+      return tags
+        .flatMap(tag => typeof tag === 'string' ? tag.split(',') : [tag])
+        .map(tag => String(tag).trim())
+        .filter(Boolean)
+        .slice(0, 5);
+    }
+
+    function parseLegacyMemoryText(rawText) {
+      if (typeof rawText !== 'string') return null;
+      const trimmed = rawText.trim();
+      if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return null;
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return null;
+      }
+    }
+
+    function getMemoryDisplayData(item) {
+      const parsed = parseLegacyMemoryText(item?.content || '');
+      const title = item?.title || parsed?.title || 'Untitled memory';
+      const source = item?.source || item?.type || 'summary';
+      const tags = normalizeMemoryTags(item?.tags || parsed?.tags || []);
+      const date = item?.date || '';
+      const previewBase = typeof item?.content === 'string' ? item.content.trim() : '';
+      let preview = item?.preview || '';
+      if (!preview || preview.startsWith('{')) {
+        if (parsed?.summary) preview = parsed.summary;
+        else if (parsed?.accomplishments && Array.isArray(parsed.accomplishments)) preview = parsed.accomplishments.join(' • ');
+        else if (parsed?.next_steps && Array.isArray(parsed.next_steps)) preview = parsed.next_steps.join(' • ');
+        else if (previewBase && previewBase.length > 0) preview = previewBase.slice(0, 180);
+      }
+      return { title, source, tags, date, preview };
+    }
+
     function openMemoryDetail(item) {
       _currentDetailItem = item;
       exitEditMode();
-      const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
+      const display = getMemoryDisplayData(item);
+      const typeClass = ['raw', 'summary', 'reference_doc'].includes(display.source) ? display.source : 'unknown';
       memoryDetailBadge.className = `memory-type-badge ${typeClass}`;
-      memoryDetailBadge.textContent = item.type || 'unknown';
+      memoryDetailBadge.textContent = display.source || 'unknown';
       memoryDetailId.textContent = item.id;
+      memoryDetailTitle.textContent = display.title || 'Untitled memory';
       const metaParts = [];
-      if (item.date) metaParts.push(item.date);
-      if (item.source) metaParts.push(item.source);
+      if (display.date) metaParts.push(display.date);
+      if (display.source) metaParts.push(display.source);
       if (item.section) metaParts.push(item.section);
       memoryDetailMeta.textContent = metaParts.join(' • ');
+      memoryDetailTags.innerHTML = '';
+      if (display.tags.length > 0) {
+        display.tags.forEach(tag => {
+          const tagBadge = document.createElement('span');
+          tagBadge.className = 'memory-tag-badge';
+          tagBadge.textContent = tag;
+          memoryDetailTags.appendChild(tagBadge);
+        });
+      }
       memoryDetailContent.textContent = item.content || '(empty)';
       memoryListView.style.display = 'none';
       memoryDetailView.style.display = '';
@@ -1257,31 +1376,67 @@
       const row = document.createElement('div');
       row.className = 'memory-item';
       row.dataset.id = item.id;
+      const display = getMemoryDisplayData(item);
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'memory-checkbox';
+      checkbox.dataset.id = item.id;
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          selectedMemoryIds.add(item.id);
+        } else {
+          selectedMemoryIds.delete(item.id);
+        }
+        updateSelectAllState();
+        updateBulkDeleteButtonState();
+      });
 
       const body = document.createElement('div');
       body.className = 'memory-item-body';
-      body.addEventListener('click', () => openMemoryDetail(item));
+      body.addEventListener('click', (e) => {
+        if (e.target !== checkbox) {
+          openMemoryDetail(item);
+        }
+      });
 
-      const typeClass = ['raw', 'summary', 'reference_doc'].includes(item.type) ? item.type : 'unknown';
+      const typeClass = ['raw', 'summary', 'reference_doc'].includes(display.source) ? display.source : 'unknown';
       const badge = document.createElement('span');
       badge.className = `memory-type-badge ${typeClass}`;
-      badge.textContent = item.type || 'unknown';
+      badge.textContent = display.source || 'unknown';
+
+      const title = document.createElement('div');
+      title.className = 'memory-item-title';
+      title.textContent = display.title || '(empty)';
 
       const preview = document.createElement('div');
       preview.className = 'memory-item-preview';
-      preview.textContent = item.preview || '(empty)';
+      preview.textContent = display.preview || '(empty)';
 
       const metaParts = [];
-      if (item.date) metaParts.push(item.date);
-      if (item.source) metaParts.push(item.source);
+      if (display.date) metaParts.push(display.date);
+      if (display.source) metaParts.push(display.source);
       if (item.section) metaParts.push(item.section);
       const meta = document.createElement('div');
       meta.className = 'memory-item-meta';
       meta.textContent = metaParts.join(' • ');
 
+      const tagsContainer = document.createElement('div');
+      tagsContainer.className = 'memory-item-tags';
+      if (display.tags.length > 0) {
+        display.tags.forEach(tag => {
+          const tagBadge = document.createElement('span');
+          tagBadge.className = 'memory-tag-badge';
+          tagBadge.textContent = tag;
+          tagsContainer.appendChild(tagBadge);
+        });
+      }
+
       body.appendChild(badge);
+      body.appendChild(title);
       body.appendChild(preview);
       body.appendChild(meta);
+      body.appendChild(tagsContainer);
 
       const delBtn = document.createElement('button');
       delBtn.className = 'btn-delete-memory';
@@ -1301,6 +1456,10 @@
             throw new Error(data.detail || res.statusText);
           }
           row.remove();
+          // Remove from selected if it was selected
+          selectedMemoryIds.delete(item.id);
+          updateSelectAllState();
+          updateBulkDeleteButtonState();
           if (groupCountSpan && groupItemsDiv) {
             const groupRemaining = groupItemsDiv.querySelectorAll('.memory-item').length;
             groupCountSpan.textContent = `${groupRemaining}`;
@@ -1317,6 +1476,7 @@
         }
       });
 
+      row.appendChild(checkbox);
       row.appendChild(body);
       row.appendChild(delBtn);
       return row;
@@ -1524,6 +1684,115 @@
         openMemoryBrowser();
       } catch (e) {
         showToast(`Import failed: ${e.message}`);
+      }
+    }
+
+    // ---- Memory Selection and Bulk Deletion ----
+    function updateSelectAllState() {
+      const allCheckboxes = memoryList.querySelectorAll('.memory-checkbox');
+      if (allCheckboxes.length === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        return;
+      }
+
+      const checkedCheckboxes = memoryList.querySelectorAll('.memory-checkbox:checked');
+      if (checkedCheckboxes.length === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+      } else if (checkedCheckboxes.length === allCheckboxes.length) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+      } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true;
+      }
+
+      updateBulkDeleteButtonState();
+    }
+
+    function updateBulkDeleteButtonState() {
+      if (selectedMemoryIds.size > 0) {
+        memorySelectionBar.style.display = 'flex';
+        bulkDeleteBtn.style.display = '';
+        bulkDeleteBtn.textContent = `Delete Selected (${selectedMemoryIds.size})`;
+      } else {
+        memorySelectionBar.style.display = 'none';
+        bulkDeleteBtn.style.display = 'none';
+      }
+    }
+
+    selectAllCheckbox.addEventListener('change', () => {
+      const allCheckboxes = memoryList.querySelectorAll('.memory-checkbox');
+      if (selectAllCheckbox.checked) {
+        // Select all
+        allCheckboxes.forEach(checkbox => {
+          if (!checkbox.checked) {
+            checkbox.checked = true;
+            selectedMemoryIds.add(checkbox.dataset.id);
+          }
+        });
+      } else {
+        // Deselect all
+        allCheckboxes.forEach(checkbox => {
+          if (checkbox.checked) {
+            checkbox.checked = false;
+            selectedMemoryIds.delete(checkbox.dataset.id);
+          }
+        });
+      }
+      updateBulkDeleteButtonState();
+    });
+
+    bulkDeleteBtn.addEventListener('click', deleteSelectedMemories);
+
+    async function deleteSelectedMemories() {
+      if (selectedMemoryIds.size === 0) return;
+
+      if (!confirm(`Delete ${selectedMemoryIds.size} selected memory entries? This cannot be undone.`)) return;
+
+      const channelId = channelSelect.value;
+      if (!channelId) return;
+
+      try {
+        const res = await fetch(
+          `api/channels/${encodeURIComponent(channelId)}/memories`,
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memory_ids: Array.from(selectedMemoryIds) }),
+          }
+        );
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || res.statusText);
+        }
+
+        // Remove deleted items from UI
+        selectedMemoryIds.forEach(id => {
+          const row = memoryList.querySelector(`[data-id="${id}"]`);
+          if (row) row.remove();
+        });
+
+        const deletedCount = selectedMemoryIds.size;
+
+        // Clear selection state
+        selectedMemoryIds.clear();
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        updateBulkDeleteButtonState();
+
+        const total = memoryList.querySelectorAll('.memory-item').length;
+        memoryCount.textContent = `(${total} item${total !== 1 ? 's' : ''})`;
+        if (total === 0) {
+          memoryList.style.display = 'none';
+          memoryEmpty.style.display = '';
+        }
+
+        showToast(`Deleted ${deletedCount} memory entr${deletedCount !== 1 ? 'ies' : 'y'}.`);
+      } catch (e) {
+        showToast(`Delete failed: ${e.message}`);
       }
     }
 

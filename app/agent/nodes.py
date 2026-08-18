@@ -22,7 +22,7 @@ STORE_SAVE_RAW = False
 # DEBUG
 # ---------------------------------------------------------------------------
 DEBUG_ROUTER = False
-DEBUG_EXTRACTOR = False
+DEBUG_EXTRACTOR = True
 DEBUG_STORE = False
 DEBUG_RETRIEVER = False
 DEBUG_ANSWER = False
@@ -38,6 +38,73 @@ router_llm = RouterInference(temperature=0.0) # Fast model
 # ---------------------------------------------------------------------------
 # Node functions
 # ---------------------------------------------------------------------------
+
+def _normalize_tags(tags: Any) -> list[str]:
+    if isinstance(tags, str):
+        try:
+            parsed = json.loads(tags)
+            if isinstance(parsed, list):
+                tags = parsed
+            else:
+                tags = [parsed]
+        except json.JSONDecodeError:
+            tags = [part.strip() for part in tags.split(',') if part.strip()]
+    elif not isinstance(tags, list):
+        tags = [tags] if tags is not None else []
+
+    normalized = []
+    for tag in tags:
+        text = str(tag).strip()
+        if text:
+            normalized.append(text)
+    return normalized[:5]
+
+
+def _normalize_extracted_summary(raw: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    if isinstance(raw, str):
+        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            pass
+    elif isinstance(raw, dict):
+        payload = raw
+
+    payload.setdefault("title", "Progress report")
+    payload.setdefault("week", date.today().isoformat())
+    payload["tags"] = _normalize_tags(payload.get("tags", ["report", "progress"]))
+    if not payload["tags"]:
+        payload["tags"] = ["report", "progress"]
+    return payload
+
+
+def _render_summary_text(extracted: dict[str, Any]) -> str:
+    sections: list[str] = []
+    for key, label in [
+        ("accomplishments", "Accomplishments"),
+        ("blockers", "Blockers"),
+        ("next_steps", "Next steps"),
+    ]:
+        values = extracted.get(key, [])
+        if isinstance(values, str):
+            values = [values]
+        if not values:
+            continue
+        lines = []
+        for item in values:
+            text = str(item).strip()
+            if text:
+                lines.append(f"- {text}")
+        if lines:
+            sections.append(f"{label}:\n" + "\n".join(lines))
+    if sections:
+        return "\n\n".join(sections)
+    return str(extracted.get("summary") or extracted.get("content") or extracted.get("title", "")).strip()
+
+
 def compress_node(state: dict[str, Any]) -> dict[str, Any]:
     return state
 
@@ -109,18 +176,26 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     )
     # Enforce today as the default week if the LLM left it unspecified
     try:
-        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-        extracted = json.loads(cleaned)
+        extracted = _normalize_extracted_summary(raw)
         week_val = extracted.get("week", "")
         if not week_val or week_val.lower() in ("unspecified", "unknown", "n/a", ""):
             extracted["week"] = today
-        raw = json.dumps(extracted, ensure_ascii=False)
+        extracted["tags"] = _normalize_tags(extracted.get("tags", ["report", "progress"]))
+        if not extracted["tags"]:
+            extracted["tags"] = ["report", "progress"]
+        summary_text = _render_summary_text(extracted)
         if DEBUG_EXTRACTOR:
-          print(f"Extractor node outputs: {raw}")
+          print(f"Extractor node outputs: {summary_text}")
+        raw = summary_text
 
     except (json.JSONDecodeError, AttributeError):
-        pass
-    return {"extracted_summary": raw}
+        extracted = _normalize_extracted_summary({})
+        raw = _render_summary_text(extracted)
+    return {
+        "extracted_summary": raw,
+        "extracted_title": extracted.get("title", "Progress report"),
+        "extracted_tags": extracted.get("tags", ["report", "progress"])
+    }
 
 
 def store_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -131,17 +206,26 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
 
+    title = state.get("extracted_title", "Progress report")
+    tags = _normalize_tags(state.get("extracted_tags", ["report", "progress"]))
+    if not tags:
+        tags = ["report", "progress"]
+
+    normalized_summary = state.get("extracted_summary", "")
+    if isinstance(normalized_summary, dict):
+        normalized_summary = _render_summary_text(normalized_summary)
+
     if STORE_SAVE_RAW:
         chroma_store.add_memory(
             channel_id=channel_id,
             content=report_text,
-            metadata={"date": today, "type": "raw"},
+            metadata={"date": today, "type": "raw", "source": "raw", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
         )
 
     chroma_store.add_memory(
         channel_id=channel_id,
-        content=state.get("extracted_summary", ""),
-        metadata={"date": today, "type": "summary"},
+        content=normalized_summary,
+        metadata={"date": today, "type": "summary", "source": "summary", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
     )
     return {"store_response": "Your progress report has been saved successfully.", "response": "Your progress report has been saved successfully."}
 
@@ -153,6 +237,8 @@ def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     channel_id: str = state["channel_id"]
     query: str = state.get("question_segment") or state["messages"][-1]
 
+    # Augment query with tags from recent memories if available
+    augmented_query = query
     if DEBUG_RETRIEVER:
         print(f"Retriever node inputs: {query}")
 

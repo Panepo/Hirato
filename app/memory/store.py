@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -25,6 +26,38 @@ _chroma_ef = _CustomEmbeddingFunction()
 
 
 class ChromaStore:
+    @staticmethod
+    def _normalize_tags(tags: Any) -> list[str]:
+        if isinstance(tags, str):
+            try:
+                parsed = json.loads(tags)
+                if isinstance(parsed, list):
+                    tags = parsed
+                else:
+                    tags = [parsed]
+            except json.JSONDecodeError:
+                tags = [part.strip() for part in tags.split(',') if part.strip()]
+        elif not isinstance(tags, list):
+            tags = [tags] if tags is not None else []
+
+        normalized = []
+        for tag in tags:
+            text = str(tag).strip()
+            if text:
+                normalized.append(text)
+        return normalized[:5]
+
+    @staticmethod
+    def _normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(metadata or {})
+        for key in ["date", "type", "source", "section", "title"]:
+            value = normalized.get(key)
+            if value is not None and not isinstance(value, (str, int, float, bool)):
+                normalized[key] = str(value)
+        raw_tags = normalized.get("tags", [])
+        normalized["tags"] = json.dumps(ChromaStore._normalize_tags(raw_tags), ensure_ascii=False)
+        return normalized
+
     def __init__(self) -> None:
         self._client = chromadb.PersistentClient(
             path=settings.CHROMA_PERSIST_PATH,
@@ -50,7 +83,7 @@ class ChromaStore:
         collection.upsert(
             ids=[doc_id],
             documents=[content],
-            metadatas=[metadata],
+            metadatas=[self._normalize_metadata(metadata)],
         )
 
     def search_memory(
@@ -112,8 +145,10 @@ class ChromaStore:
                 {
                     "date": "1970-01-01",
                     "type": "reference_doc",
-                    "source": chunk.get("source", ""),
+                    "source": chunk.get("source", "reference_doc"),
                     "section": chunk.get("section", ""),
+                    "title": chunk.get("section", "Reference document"),
+                    "tags": json.dumps(["reference_doc"]),
                 }
             )
 
@@ -139,14 +174,17 @@ class ChromaStore:
         items: list[dict[str, Any]] = []
         for doc_id, doc, meta in zip(result["ids"], result["documents"], result["metadatas"]):
             meta = meta or {}
+            tags = ChromaStore._normalize_tags(meta.get("tags", []))
             items.append({
                 "id": doc_id,
                 "content": doc or "",
                 "preview": (doc or "")[:150],
                 "date": meta.get("date", ""),
                 "type": meta.get("type", ""),
-                "source": meta.get("source", ""),
+                "source": meta.get("source", meta.get("type", "")),
                 "section": meta.get("section", ""),
+                "title": meta.get("title", ""),
+                "tags": tags,
             })
         items.sort(key=lambda x: x["date"], reverse=True)
         return items
@@ -222,8 +260,10 @@ class ChromaStore:
             to_add_metas.append({
                 "date": mem.get("date", "1970-01-01"),
                 "type": mem.get("type", "raw"),
-                "source": mem.get("source", ""),
+                "source": mem.get("source", mem.get("type", "raw")),
                 "section": mem.get("section", ""),
+                "title": mem.get("title", ""),
+                "tags": json.dumps(ChromaStore._normalize_tags(mem.get("tags", [])), ensure_ascii=False),
             })
 
         if to_add_ids:

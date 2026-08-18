@@ -49,6 +49,8 @@ EXTRACTOR_PROMPT = """You are a channel secretary. Extract a structured summary 
 Today's date is {today}.
 
 Return a JSON object with these keys:
+- "title": a concise 4-7 word title summarizing the report
+- "tags": an array of 3-5 relevant tags/keywords (strings)
 - "week": approximate week or date range mentioned (string); if no date or time period is mentioned, use today's date ({today})
 - "accomplishments": list of things completed or progressed
 - "blockers": list of blockers, issues, or impediments
