@@ -48,6 +48,10 @@ class ImportMemoriesRequest(BaseModel):
     memories: list[dict]
 
 
+class BulkDeleteMemoriesRequest(BaseModel):
+    memory_ids: list[str]
+
+
 class ChatRequest(BaseModel):
     message: str
     channel_id: str = ""
@@ -97,6 +101,18 @@ async def list_memories(channel_id: str) -> list[dict]:
         return chroma_store.list_memories(channel_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/channels/{channel_id}/memories", status_code=200)
+async def delete_memories(channel_id: str, body: BulkDeleteMemoriesRequest) -> dict[str, int]:
+    try:
+        deleted = len([memory_id for memory_id in body.memory_ids if str(memory_id).strip()])
+        if deleted == 0:
+            return {"deleted": 0, "ok": True}
+        chroma_store.delete_memories(channel_id, body.memory_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"deleted": deleted, "ok": True}
 
 
 @router.delete("/channels/{channel_id}/memories/{memory_id}", status_code=200)

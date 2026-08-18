@@ -151,14 +151,35 @@ class ChromaStore:
         items.sort(key=lambda x: x["date"], reverse=True)
         return items
 
-    def delete_memory(self, channel_id: str, memory_id: str) -> bool:
-        """Delete a single document from the channel collection."""
+    def delete_memories(self, channel_id: str, memory_ids: list[str]) -> bool:
+        """Delete multiple documents from the channel collection in batches."""
+        if not memory_ids:
+            return True
         try:
             collection = self._client.get_collection(name=channel_id)
         except Exception as exc:
             raise ValueError(f"Channel '{channel_id}' not found.") from exc
-        collection.delete(ids=[memory_id])
+
+        unique_ids = []
+        seen: set[str] = set()
+        for memory_id in memory_ids:
+            memory_id = str(memory_id).strip()
+            if not memory_id or memory_id in seen:
+                continue
+            seen.add(memory_id)
+            unique_ids.append(memory_id)
+
+        if not unique_ids:
+            return True
+
+        batch_size = 100
+        for i in range(0, len(unique_ids), batch_size):
+            collection.delete(ids=unique_ids[i : i + batch_size])
         return True
+
+    def delete_memory(self, channel_id: str, memory_id: str) -> bool:
+        """Delete a single document from the channel collection."""
+        return self.delete_memories(channel_id, [memory_id])
 
     def update_memory(self, channel_id: str, memory_id: str, content: str) -> bool:
         """Update the text content of a single document (re-embeds new content)."""
