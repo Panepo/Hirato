@@ -292,8 +292,8 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
         "response": None,
     }
 
-    # Run preprocessing nodes in thread pool (they make blocking LLM calls)
-    router_result = await asyncio.to_thread(router_node, state)
+    # Run preprocessing nodes asynchronously
+    router_result = await router_node_async(state)
     state.update(router_result)
 
     if not state.get("channel_id"):
@@ -304,13 +304,13 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
         session = await sessions_store.create_session(state["channel_id"])
         session_id = session["id"]
 
-    extractor_result = await asyncio.to_thread(extractor_node, state)
+    extractor_result = await extractor_node_async(state)
     state.update(extractor_result)
 
-    store_result = await asyncio.to_thread(store_node, state)
+    store_result = await store_node_async(state)
     state.update(store_result)
 
-    retriever_result = await asyncio.to_thread(retriever_node, state)
+    retriever_result = await retriever_node_async(state)
     state.update(retriever_result)
 
     frozen_state = dict(state)
