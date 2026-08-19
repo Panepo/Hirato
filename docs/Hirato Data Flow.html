@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangGraph Agent Workflow Visualizer</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    code, pre {
+      font-family: 'Fira Code', monospace;
+    }
+
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .node-pulse {
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+      animation: pulse-glow 2s infinite alternate;
+    }
+
+    @keyframes pulse-glow {
+      0% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
+      100% { box-shadow: 0 0 25px rgba(59, 130, 246, 0.8); }
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(51, 65, 85, 0.8);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(71, 85, 105, 1);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col overflow-hidden text-slate-200 antialiased selection:bg-indigo-500 selection:text-white">
+
+  <header class="h-16 border-b border-slate-800/80 bg-slate-900/90 px-6 flex items-center justify-between z-20 shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+        <i class="fa-solid fa-diagram-project text-white text-base"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-bold text-lg text-white tracking-tight">LangGraph Visualizer</h1>
+          <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">secretary_graph</span>
+        </div>
+        <p class="text-xs text-slate-400">Interactive Architecture, Flow Simulator & State Inspector</p>
+      </div>
+    </div>
+
+    <!-- Quick Controls -->
+    <div class="flex items-center gap-3">
+      <div class="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-medium">
+        <button id="viewTabGraph" onclick="switchView('graph')" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white shadow-sm transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-network-wired text-xs"></i> Visual Graph
+        </button>
+        <button id="viewTabSeq" onclick="switchView('sequence')" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-bars-staggered text-xs"></i> Sequence Flow
+        </button>
+        <button id="viewTabCode" onclick="switchView('code')" class="px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-code text-xs"></i> Python Source
+        </button>
+      </div>
+
+      <button onclick="exportMermaid()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700/80 transition-all flex items-center gap-1.5">
+        <i class="fa-solid fa-download text-slate-400"></i> Export Mermaid
+      </button>
+    </div>
+  </header>
+
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- LEFT / MAIN VIEW AREA -->
+    <main class="flex-1 flex flex-col relative bg-slate-950 overflow-hidden">
+
+      <!-- View Controls & Simulation Toolbar -->
+      <div class="absolute top-4 left-4 z-10 flex flex-wrap items-center gap-3">
+        <!-- Simulation controls -->
+        <div class="glass-panel rounded-xl p-2 flex items-center gap-2 shadow-xl">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 px-2 flex items-center gap-1">
+            <i class="fa-solid fa-play text-emerald-400"></i> Simulator:
+          </span>
+          <select id="simPathSelect" onchange="resetSimulation()" class="bg-slate-900 text-xs border border-slate-700 text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-indigo-500">
+            <option value="save_memory">Path A: save_memory (Extractor &rarr; Store)</option>
+            <option value="answer_question">Path B: answer_question (Retriever &rarr; Answer)</option>
+          </select>
+          <button id="simStepBtn" onclick="stepSimulation()" class="px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/30">
+            <i class="fa-solid fa-forward"></i> Next Step
+          </button>
+          <button onclick="playAutoSimulation()" id="simAutoBtn" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-medium transition-all flex items-center gap-1.5 border border-slate-700">
+            <i class="fa-solid fa-play text-slate-400"></i> Auto Play
+          </button>
+          <button onclick="resetSimulation()" class="p-1.5 text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg border border-slate-700 transition-all" title="Reset Simulation">
+            <i class="fa-solid fa-rotate-left"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="mainCanvasContainer" class="w-full h-full flex items-center justify-center p-8 overflow-auto">
+        
+        <!-- Interactive Graph Visualizer View -->
+        <div id="graphView" class="w-full h-full flex flex-col items-center justify-center min-h-[500px]">
+          <!-- Interactive SVG Diagram container -->
+          <div class="relative w-full max-w-4xl flex justify-center py-6">
+            
+            <svg id="interactiveGraphSvg" viewBox="0 0 900 620" class="w-full h-auto max-h-[80vh] drop-shadow-2xl">
+              <defs>
+                <!-- Arrowheads -->
+                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+                </marker>
+                <marker id="arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#6366f1" />
+                </marker>
+                <marker id="arrow-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981" />
+                </marker>
+
+                <!-- Gradients -->
+                <linearGradient id="startGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#10b981" />
+                  <stop offset="100%" stop-color="#059669" />
+                </linearGradient>
+                <linearGradient id="endGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#ef4444" />
+                  <stop offset="100%" stop-color="#dc2626" />
+                </linearGradient>
+                <linearGradient id="routerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#8b5cf6" />
+                  <stop offset="100%" stop-color="#6d28d9" />
+                </linearGradient>
+                <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#1e293b" />
+                  <stop offset="100%" stop-color="#0f172a" />
+                </linearGradient>
+              </defs>
+
+              <!-- Connection Edges -->
+              <g id="edgesGroup" class="transition-all duration-300">
+                <!-- START -> router_node -->
+                <path id="edge-START-router" d="M 450,55 L 450,110" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+                
+                <!-- router_node -> extractor_node (save_memory) -->
+                <path id="edge-router-extractor" d="M 370,150 C 230,150 230,220 230,250" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+                
+                <!-- router_node -> retriever_node (answer_question) -->
+                <path id="edge-router-retriever" d="M 530,150 C 670,150 670,220 670,250" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+
+                <!-- extractor_node -> store_node -->
+                <path id="edge-extractor-store" d="M 230,310 L 230,380" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+
+                <!-- retriever_node -> answer_node -->
+                <path id="edge-retriever-answer" d="M 670,310 L 670,380" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+
+                <!-- store_node -> END -->
+                <path id="edge-store-END" d="M 230,440 C 230,520 370,550 415,550" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+
+                <!-- answer_node -> END -->
+                <path id="edge-answer-END" d="M 670,440 C 670,520 530,550 485,550" stroke="#64748b" stroke-width="2.5" fill="none" marker-end="url(#arrow)" class="transition-all duration-300"/>
+              </g>
+
+              <!-- Edge Labels -->
+              <g id="edgeLabels">
+                <!-- Save Memory Label -->
+                <g transform="translate(260, 170)">
+                  <rect x="-60" y="-12" width="120" height="24" rx="12" fill="#0f172a" stroke="#8b5cf6" stroke-width="1.5"/>
+                  <text x="0" y="4" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="600">"save_memory"</text>
+                </g>
+                <!-- Answer Question Label -->
+                <g transform="translate(640, 170)">
+                  <rect x="-70" y="-12" width="140" height="24" rx="12" fill="#0f172a" stroke="#3b82f6" stroke-width="1.5"/>
+                  <text x="0" y="4" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="600">"answer_question"</text>
+                </g>
+              </g>
+
+              <!-- Graph Nodes -->
+              <!-- START Node -->
+              <g id="node-START" onclick="selectNode('START')" class="cursor-pointer group">
+                <rect x="390" y="15" width="120" height="40" rx="20" fill="url(#startGrad)" class="transition-all duration-300 group-hover:filter group-hover:brightness-110"/>
+                <text x="450" y="40" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700" letter-spacing="0.5">__START__</text>
+              </g>
+
+              <!-- Router Node -->
+              <g id="node-router_node" onclick="selectNode('router_node')" class="cursor-pointer group">
+                <rect x="350" y="110" width="200" height="60" rx="12" fill="url(#routerGrad)" stroke="#a78bfa" stroke-width="2" class="transition-all duration-300 group-hover:filter group-hover:brightness-110"/>
+                <text x="450" y="137" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">router_node</text>
+                <text x="450" y="155" text-anchor="middle" fill="#ddd6fe" font-size="11">route_decision()</text>
+              </g>
+
+              <!-- Extractor Node -->
+              <g id="node-extractor_node" onclick="selectNode('extractor_node')" class="cursor-pointer group">
+                <rect x="130" y="250" width="200" height="60" rx="12" fill="url(#nodeGrad)" stroke="#334155" stroke-width="2" class="transition-all duration-300 group-hover:stroke-indigo-500"/>
+                <circle cx="155" cy="280" r="14" fill="#312e81"/>
+                <text x="155" y="284" text-anchor="middle" fill="#a5b4fc" font-size="12"><tspan class="fa">&#xf0c4;</tspan></text>
+                <text x="240" y="278" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="600">extractor_node</text>
+                <text x="240" y="296" text-anchor="middle" fill="#94a3b8" font-size="11">Extracts Key Info</text>
+              </g>
+
+              <!-- Store Node -->
+              <g id="node-store_node" onclick="selectNode('store_node')" class="cursor-pointer group">
+                <rect x="130" y="380" width="200" height="60" rx="12" fill="url(#nodeGrad)" stroke="#334155" stroke-width="2" class="transition-all duration-300 group-hover:stroke-indigo-500"/>
+                <circle cx="155" cy="410" r="14" fill="#064e3b"/>
+                <text x="155" y="414" text-anchor="middle" fill="#6ee7b7" font-size="12"><tspan class="fa">&#xf1c0;</tspan></text>
+                <text x="240" y="408" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="600">store_node</text>
+                <text x="240" y="426" text-anchor="middle" fill="#94a3b8" font-size="11">Saves Memory to DB</text>
+              </g>
+
+              <!-- Retriever Node -->
+              <g id="node-retriever_node" onclick="selectNode('retriever_node')" class="cursor-pointer group">
+                <rect x="570" y="250" width="200" height="60" rx="12" fill="url(#nodeGrad)" stroke="#334155" stroke-width="2" class="transition-all duration-300 group-hover:stroke-indigo-500"/>
+                <circle cx="595" cy="280" r="14" fill="#1e3a8a"/>
+                <text x="595" y="284" text-anchor="middle" fill="#93c5fd" font-size="12"><tspan class="fa">&#xf002;</tspan></text>
+                <text x="680" y="278" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="600">retriever_node</text>
+                <text x="680" y="296" text-anchor="middle" fill="#94a3b8" font-size="11">Fetches Context Docs</text>
+              </g>
+
+              <!-- Answer Node -->
+              <g id="node-answer_node" onclick="selectNode('answer_node')" class="cursor-pointer group">
+                <rect x="570" y="380" width="200" height="60" rx="12" fill="url(#nodeGrad)" stroke="#334155" stroke-width="2" class="transition-all duration-300 group-hover:stroke-indigo-500"/>
+                <circle cx="595" cy="410" r="14" fill="#701a75"/>
+                <text x="595" y="414" text-anchor="middle" fill="#f0abfc" font-size="12"><tspan class="fa">&#xf753;</tspan></text>
+                <text x="680" y="408" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="600">answer_node</text>
+                <text x="680" y="426" text-anchor="middle" fill="#94a3b8" font-size="11">Generates LLM Response</text>
+              </g>
+
+              <!-- END Node -->
+              <g id="node-END" onclick="selectNode('END')" class="cursor-pointer group">
+                <rect x="390" y="530" width="120" height="40" rx="20" fill="url(#endGrad)" class="transition-all duration-300 group-hover:filter group-hover:brightness-110"/>
+                <text x="450" y="555" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="700" letter-spacing="0.5">__END__</text>
+              </g>
+            </svg>
+
+          </div>
+        </div>
+
+        <div id="sequenceView" class="hidden w-full max-w-4xl bg-slate-900/60 p-6 rounded-2xl border border-slate-800">
+          <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-arrows-split-up-and-left text-indigo-400"></i> Execution Sequence Breakdown
+          </h3>
+          <div id="mermaidSeqTarget" class="flex justify-center overflow-auto p-4 bg-slate-950 rounded-xl"></div>
+        </div>
+
+        <div id="codeView" class="hidden w-full max-w-4xl bg-slate-900 p-6 rounded-2xl border border-slate-800 overflow-auto max-h-[75vh]">
+          <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+            <span class="text-xs font-mono text-slate-400">app/agent/secretary_graph.py</span>
+            <button onclick="copyCode()" class="text-xs bg-slate-800 hover:bg-slate-700 px-2.5 py-1 rounded border border-slate-700 text-slate-300 transition-all flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i> Copy
+            </button>
+          </div>
+          <pre><code class="text-xs text-indigo-200 leading-relaxed">from __future__ import annotations
+from typing import Any, Optional
+from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
+
+from app.agent.nodes import (
+    answer_node, extractor_node, retriever_node, router_node, store_node
+)
+
+class AgentState(TypedDict):
+    messages: list[str]
+    channel_id: str
+    decision: str  # "save_memory" or "answer_question"
+    report_segment: Optional[str]
+    question_segment: Optional[str]
+    extracted_summary: Optional[str]
+    retrieved_docs: Optional[list[dict[str, Any]]]
+    store_response: Optional[str]
+    answer_response: Optional[str]
+    response: Optional[str]
+
+def route_decision(state: AgentState) -> str:
+    """Route to save_memory or answer_question based on router decision."""
+    decision = state.get("decision", "answer_question")
+    if decision == "save_memory":
+        return "extractor_node"
+    else:
+        return "retriever_node"
+
+builder = StateGraph(AgentState)
+
+builder.add_node("router_node", router_node)
+builder.add_node("extractor_node", extractor_node)
+builder.add_node("store_node", store_node)
+builder.add_node("retriever_node", retriever_node)
+builder.add_node("answer_node", answer_node)
+
+builder.add_edge(START, "router_node")
+
+# Conditional routing based on decision
+builder.add_conditional_edges(
+    "router_node",
+    route_decision,
+    {
+        "extractor_node": "extractor_node",
+        "retriever_node": "retriever_node",
+    }
+)
+
+# Path 1: save_memory -> extractor -> store -> END
+builder.add_edge("extractor_node", "store_node")
+builder.add_edge("store_node", END)
+
+# Path 2: answer_question -> retriever -> answer -> END
+builder.add_edge("retriever_node", "answer_node")
+builder.add_edge("answer_node", END)
+
+secretary_graph = builder.compile()</code></pre>
+        </div>
+
+      </div>
+
+      <!-- Footer Info Bar -->
+      <div class="h-10 border-t border-slate-800/80 bg-slate-900/60 px-6 flex items-center justify-between text-xs text-slate-400 z-10 shrink-0">
+        <div class="flex items-center gap-4">
+          <span class="flex items-center gap-1.5"><i class="fa-solid fa-circle text-[8px] text-emerald-400"></i> Active Workflow: Secretary Agent</span>
+          <span>Nodes: <strong>5</strong></span>
+          <span>Paths: <strong>2 Conditional Branches</strong></span>
+        </div>
+        <div id="simStatusText" class="font-mono text-indigo-400">
+          Simulation Ready
+        </div>
+      </div>
+    </main>
+
+    <aside class="w-96 border-l border-slate-800 bg-slate-900/90 flex flex-col z-20 shrink-0 overflow-hidden">
+      
+      <!-- Panel Tabs -->
+      <div class="flex border-b border-slate-800 bg-slate-950/50">
+        <button id="tabBtnNode" onclick="switchSidebarTab('node')" class="flex-1 py-3 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 transition-all flex items-center justify-center gap-2">
+          <i class="fa-solid fa-circle-info"></i> Node Inspector
+        </button>
+        <button id="tabBtnState" onclick="switchSidebarTab('state')" class="flex-1 py-3 text-xs font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition-all flex items-center justify-center gap-2">
+          <i class="fa-solid fa-database"></i> AgentState Schema
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="flex-1 overflow-auto p-5 space-y-6">
+
+        <!-- TAB 1: NODE INSPECTOR -->
+        <div id="tabContentNode" class="space-y-5">
+          <div id="selectedNodeCard" class="glass-panel rounded-xl p-4 border border-indigo-500/30 bg-indigo-500/5">
+            <div class="flex items-center justify-between mb-2">
+              <span id="inspectorNodeType" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300">
+                Router Node
+              </span>
+              <span id="inspectorNodeStatus" class="text-xs text-slate-400 font-mono">
+                Click graph to inspect
+              </span>
+            </div>
+            <h2 id="inspectorNodeTitle" class="text-lg font-bold text-white mb-1">
+              router_node
+            </h2>
+            <p id="inspectorNodeDesc" class="text-xs text-slate-300 leading-relaxed">
+              Analyzes incoming state message and decides whether to extract information for storage or answer a user query.
+            </p>
+          </div>
+
+          <!-- State Inputs/Outputs affected -->
+          <div class="space-y-3">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-code-compare text-indigo-400"></i> State Mutations
+            </h3>
+            
+            <div class="space-y-2 text-xs">
+              <div class="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                <span class="text-slate-400 font-mono block mb-1">Reads State Keys:</span>
+                <div id="inspectorReads" class="flex flex-wrap gap-1">
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">messages</span>
+                  <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">channel_id</span>
+                </div>
+              </div>
+
+              <div class="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800">
+                <span class="text-slate-400 font-mono block mb-1">Writes/Updates State Keys:</span>
+                <div id="inspectorWrites" class="flex flex-wrap gap-1">
+                  <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">decision</span>
+                  <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">report_segment</span>
+                  <span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">question_segment</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conditional Logic Highlight -->
+          <div id="inspectorRoutingBox" class="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <h4 class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span>Conditional Logic</span>
+              <span class="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-indigo-300 font-mono">route_decision()</span>
+            </h4>
+            <pre id="inspectorCodeSnippet" class="text-[11px] text-slate-300 bg-slate-900 p-2.5 rounded border border-slate-800 overflow-x-auto leading-relaxed">if state["decision"] == "save_memory":
+    return "extractor_node"
+else:
+    return "retriever_node"</pre>
+          </div>
+
+          <!-- Live Dynamic Simulated Output -->
+          <div class="space-y-2">
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <i class="fa-solid fa-terminal text-emerald-400"></i> Simulated State Snapshot
+            </h3>
+            <pre id="inspectorLiveState" class="text-[11px] font-mono text-emerald-300 bg-slate-950 p-3 rounded-xl border border-slate-800/80 overflow-x-auto max-h-48 leading-relaxed">
+{
+  "messages": ["Remember project meeting is at 3pm"],
+  "decision": "save_memory",
+  "report_segment": "project meeting is at 3pm"
+}</pre>
+          </div>
+        </div>
+
+        <!-- TAB 2: AGENT STATE SCHEMA -->
+        <div id="tabContentState" class="hidden space-y-4">
+          <div class="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300 leading-relaxed">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            <strong>AgentState</strong> is the central memory object passed across all nodes in this LangGraph architecture.
+          </div>
+
+          <div class="space-y-2" id="stateFieldsList">
+            <!-- Dynamically populated schema fields -->
+          </div>
+        </div>
+
+      </div>
+
+    </aside>
+
+  </div>
+
+  <script>
+    // --- Data Definitions ---
+    const nodesData = {
+      "START": {
+        title: "__START__",
+        type: "Workflow Entry Point",
+        desc: "Graph initialization step. Receives user input context and passes payload directly to router_node.",
+        reads: ["messages", "channel_id"],
+        writes: [],
+        routing: "Direct Edge &rarr; router_node",
+        code: "builder.add_edge(START, 'router_node')",
+        sampleState: {
+          messages: ["Please archive this report: Q3 sales increased by 22%"],
+          channel_id: "chan_slack_991"
+        }
+      },
+      "router_node": {
+        title: "router_node",
+        type: "Decision / Router Node",
+        desc: "Evaluates state input messages. Determines intent ('save_memory' or 'answer_question') and segments prompt into context parts.",
+        reads: ["messages", "channel_id"],
+        writes: ["decision", "report_segment", "question_segment"],
+        routing: "Conditional Routing via route_decision()",
+        code: "def route_decision(state):\n    if state.get('decision') == 'save_memory':\n        return 'extractor_node'\n    return 'retriever_node'",
+        sampleState: {
+          messages: ["Please archive this report: Q3 sales increased by 22%"],
+          channel_id: "chan_slack_991",
+          decision: "save_memory",
+          report_segment: "Q3 sales increased by 22%",
+          question_segment: null
+        }
+      },
+      "extractor_node": {
+        title: "extractor_node",
+        type: "Processing Node (Branch A)",
+        desc: "Extracts key structured metadata, entities, and summaries from report_segment for memory storage.",
+        reads: ["report_segment"],
+        writes: ["extracted_summary"],
+        routing: "Direct Edge &rarr; store_node",
+        code: "builder.add_edge('extractor_node', 'store_node')",
+        sampleState: {
+          report_segment: "Q3 sales increased by 22%",
+          extracted_summary: "Metric: Sales Increase | Period: Q3 | Value: +22%"
+        }
+      },
+      "store_node": {
+        title: "store_node",
+        type: "Persistence Node (Branch A)",
+        desc: "Persists extracted_summary into long-term database / memory channel and returns status response.",
+        reads: ["extracted_summary", "channel_id"],
+        writes: ["store_response", "response"],
+        routing: "Direct Edge &rarr; END",
+        code: "builder.add_edge('store_node', END)",
+        sampleState: {
+          store_response: "SUCCESS_SAVED_DB_ID_9012",
+          response: "Memory saved successfully: Metric: Sales Increase | Period: Q3 | Value: +22%"
+        }
+      },
+      "retriever_node": {
+        title: "retriever_node",
+        type: "Search Node (Branch B)",
+        desc: "Queries long-term vector/db store using question_segment to fetch relevant historical documents.",
+        reads: ["question_segment", "channel_id"],
+        writes: ["retrieved_docs"],
+        routing: "Direct Edge &rarr; answer_node",
+        code: "builder.add_edge('retriever_node', 'answer_node')",
+        sampleState: {
+          question_segment: "What was our Q3 sales growth?",
+          retrieved_docs: [
+            { id: "doc_12", text: "Q3 sales increased by 22%", score: 0.94 }
+          ]
+        }
+      },
+      "answer_node": {
+        title: "answer_node",
+        type: "LLM Generation Node (Branch B)",
+        desc: "Synthesizes retrieved context documents and user conversation history into a formatted answer response.",
+        reads: ["retrieved_docs", "messages"],
+        writes: ["answer_response", "response"],
+        routing: "Direct Edge &rarr; END",
+        code: "builder.add_edge('answer_node', END)",
+        sampleState: {
+          answer_response: "Based on archived reports, Q3 sales growth was 22%.",
+          response: "Based on archived reports, Q3 sales growth was 22%."
+        }
+      },
+      "END": {
+        title: "__END__",
+        type: "Workflow Terminal State",
+        desc: "Execution complete. Final response state is returned to caller or user channel.",
+        reads: ["response"],
+        writes: [],
+        routing: "Terminal Node",
+        code: "secretary_graph = builder.compile()",
+        sampleState: {
+          status: "COMPLETE",
+          final_response: "Workflow finished successfully."
+        }
+      }
+    };
+
+    const agentStateSchema = [
+      { key: "messages", type: "list[str]", req: true, desc: "Raw input chat messages / user prompts" },
+      { key: "channel_id", type: "str", req: true, desc: "Source Slack or channel identifier" },
+      { key: "decision", type: "str", req: false, desc: "Routing flag: 'save_memory' or 'answer_question'" },
+      { key: "report_segment", type: "Optional[str]", req: false, desc: "Extracted memory content payload" },
+      { key: "question_segment", type: "Optional[str]", req: false, desc: "Query text segment for RAG retrieval" },
+      { key: "extracted_summary", type: "Optional[str]", req: false, desc: "Structured extracted data from extractor_node" },
+      { key: "retrieved_docs", type: "Optional[list[dict]]", req: false, desc: "Relevant background documents from retriever" },
+      { key: "store_response", type: "Optional[str]", req: false, desc: "DB save execution result string" },
+      { key: "answer_response", type: "Optional[str]", req: false, desc: "LLM response draft" },
+      { key: "response", type: "Optional[str]", req: false, desc: "Final output string returned to user" }
+    ];
+
+    // Simulation Execution Step Sequences
+    const simSequences = {
+      "save_memory": [
+        { node: "START", edge: null, desc: "User submits message to secretary_graph" },
+        { node: "router_node", edge: "edge-START-router", desc: "router_node evaluates intent &rarr; 'save_memory'" },
+        { node: "extractor_node", edge: "edge-router-extractor", desc: "Extractor parses report segment" },
+        { node: "store_node", edge: "edge-extractor-store", desc: "Store node saves payload into database" },
+        { node: "END", edge: "edge-store-END", desc: "Execution completed successfully!" }
+      ],
+      "answer_question": [
+        { node: "START", edge: null, desc: "User submits question to secretary_graph" },
+        { node: "router_node", edge: "edge-START-router", desc: "router_node evaluates intent &rarr; 'answer_question'" },
+        { node: "retriever_node", edge: "edge-router-retriever", desc: "Retriever node fetches vector database context" },
+        { node: "answer_node", edge: "edge-retriever-answer", desc: "Answer node generates natural response" },
+        { node: "END", edge: "edge-answer-END", desc: "Execution completed successfully!" }
+      ]
+    };
+
+    let simStepIndex = -1;
+    let autoPlayInterval = null;
+
+    // --- Core Functions ---
+
+    window.onload = function() {
+      renderStateSchema();
+      selectNode("router_node");
+      initMermaidSeq();
+    };
+
+    function selectNode(nodeId) {
+      const data = nodesData[nodeId];
+      if (!data) return;
+
+      // Unhighlight previous selections in SVG
+      Object.keys(nodesData).forEach(id => {
+        const el = document.getElementById(`node-${id}`);
+        if (el) {
+          const rect = el.querySelector("rect");
+          if (rect) rect.style.filter = "none";
+        }
+      });
+
+      // Highlight selected node
+      const activeEl = document.getElementById(`node-${nodeId}`);
+      if (activeEl) {
+        const rect = activeEl.querySelector("rect");
+        if (rect) rect.style.filter = "drop-shadow(0 0 12px #818cf8)";
+      }
+
+      // Populate Inspector UI
+      document.getElementById("inspectorNodeType").innerText = data.type;
+      document.getElementById("inspectorNodeTitle").innerText = data.title;
+      document.getElementById("inspectorNodeDesc").innerText = data.desc;
+
+      // Reads
+      const readsContainer = document.getElementById("inspectorReads");
+      readsContainer.innerHTML = data.reads.length > 0 
+        ? data.reads.map(r => `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">${r}</span>`).join('')
+        : `<span class="text-slate-500 italic">None</span>`;
+
+      // Writes
+      const writesContainer = document.getElementById("inspectorWrites");
+      writesContainer.innerHTML = data.writes.length > 0
+        ? data.writes.map(w => `<span class="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono">${w}</span>`).join('')
+        : `<span class="text-slate-500 italic">None</span>`;
+
+      // Code / Routing
+      document.getElementById("inspectorCodeSnippet").innerText = data.code;
+      document.getElementById("inspectorLiveState").innerText = JSON.stringify(data.sampleState, null, 2);
+    }
+
+    function resetSimulation() {
+      if (autoPlayInterval) clearInterval(autoPlayInterval);
+      simStepIndex = -1;
+      
+      // Clear edge highlights
+      document.querySelectorAll('#edgesGroup path').forEach(path => {
+        path.setAttribute('stroke', '#64748b');
+        path.setAttribute('stroke-width', '2.5');
+        path.setAttribute('marker-end', 'url(#arrow)');
+      });
+
+      // Clear node pulses
+      Object.keys(nodesData).forEach(id => {
+        const el = document.getElementById(`node-${id}`);
+        if (el) {
+          const rect = el.querySelector("rect");
+          if (rect) {
+            rect.classList.remove('node-pulse');
+            rect.style.filter = 'none';
+          }
+        }
+      });
+
+      document.getElementById("simStatusText").innerHTML = `<span class="text-slate-400">Simulation Reset</span>`;
+      selectNode("router_node");
+    }
+
+    function stepSimulation() {
+      const pathKey = document.getElementById("simPathSelect").value;
+      const sequence = simSequences[pathKey];
+
+      simStepIndex++;
+      if (simStepIndex >= sequence.length) {
+        simStepIndex = sequence.length - 1;
+        document.getElementById("simStatusText").innerHTML = `<span class="text-emerald-400 font-bold"><i class="fa-solid fa-check-circle"></i> Simulation Complete</span>`;
+        if (autoPlayInterval) clearInterval(autoPlayInterval);
+        return;
+      }
+
+      const step = sequence[simStepIndex];
+      selectNode(step.node);
+
+      // Pulse current node
+      const currentEl = document.getElementById(`node-${step.node}`);
+      if (currentEl) {
+        const rect = currentEl.querySelector("rect");
+        if (rect) rect.style.filter = "drop-shadow(0 0 16px #34d399)";
+      }
+
+      // Highlight edge if exists
+      if (step.edge) {
+        const edgeEl = document.getElementById(step.edge);
+        if (edgeEl) {
+          edgeEl.setAttribute('stroke', '#10b981');
+          edgeEl.setAttribute('stroke-width', '4');
+          edgeEl.setAttribute('marker-end', 'url(#arrow-green)');
+        }
+      }
+
+      document.getElementById("simStatusText").innerHTML = `<span class="text-indigo-400 font-semibold">Step ${simStepIndex + 1}/${sequence.length}:</span> <span class="text-slate-200">${step.desc}</span>`;
+    }
+
+    function playAutoSimulation() {
+      resetSimulation();
+      stepSimulation();
+      autoPlayInterval = setInterval(stepSimulation, 1500);
+    }
+
+    function switchView(viewName) {
+      document.getElementById("graphView").classList.add("hidden");
+      document.getElementById("sequenceView").classList.add("hidden");
+      document.getElementById("codeView").classList.add("hidden");
+
+      document.getElementById("viewTabGraph").className = "px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5";
+      document.getElementById("viewTabSeq").className = "px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5";
+      document.getElementById("viewTabCode").className = "px-3 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5";
+
+      if (viewName === 'graph') {
+        document.getElementById("graphView").classList.remove("hidden");
+        document.getElementById("viewTabGraph").className = "px-3 py-1.5 rounded-md bg-indigo-600 text-white shadow-sm transition-all flex items-center gap-1.5";
+      } else if (viewName === 'sequence') {
+        document.getElementById("sequenceView").classList.remove("hidden");
+        document.getElementById("viewTabSeq").className = "px-3 py-1.5 rounded-md bg-indigo-600 text-white shadow-sm transition-all flex items-center gap-1.5";
+      } else if (viewName === 'code') {
+        document.getElementById("codeView").classList.remove("hidden");
+        document.getElementById("viewTabCode").className = "px-3 py-1.5 rounded-md bg-indigo-600 text-white shadow-sm transition-all flex items-center gap-1.5";
+      }
+    }
+
+    function switchSidebarTab(tabName) {
+      if (tabName === 'node') {
+        document.getElementById("tabContentNode").classList.remove("hidden");
+        document.getElementById("tabContentState").classList.add("hidden");
+        document.getElementById("tabBtnNode").className = "flex-1 py-3 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 transition-all flex items-center justify-center gap-2";
+        document.getElementById("tabBtnState").className = "flex-1 py-3 text-xs font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition-all flex items-center justify-center gap-2";
+      } else {
+        document.getElementById("tabContentNode").classList.add("hidden");
+        document.getElementById("tabContentState").classList.remove("hidden");
+        document.getElementById("tabBtnState").className = "flex-1 py-3 text-xs font-semibold text-indigo-400 border-b-2 border-indigo-500 transition-all flex items-center justify-center gap-2";
+        document.getElementById("tabBtnNode").className = "flex-1 py-3 text-xs font-semibold text-slate-400 border-b-2 border-transparent hover:text-slate-200 transition-all flex items-center justify-center gap-2";
+      }
+    }
+
+    function renderStateSchema() {
+      const container = document.getElementById("stateFieldsList");
+      container.innerHTML = agentStateSchema.map(item => `
+        <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-xs font-bold text-slate-200">${item.key}</span>
+            <span class="font-mono text-[10px] px-2 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700">${item.type}</span>
+          </div>
+          <p class="text-[11px] text-slate-400 leading-relaxed">${item.desc}</p>
+        </div>
+      `).join('');
+    }
+
+    function initMermaidSeq() {
+      mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+      const mermaidGraph = `
+sequenceDiagram
+    autonumber
+    actor User
+    participant START
+    participant Router as router_node
+    participant Extractor as extractor_node
+    participant Store as store_node
+    participant Retriever as retriever_node
+    participant Answer as answer_node
+    participant END
+
+    User->>START: AgentState Payload
+    START->>Router: Route Request
+    
+    alt decision == "save_memory"
+        Router->>Extractor: Extract summary
+        Extractor->>Store: Save summary
+        Store->>END: Final Response
+    else decision == "answer_question"
+        Router->>Retriever: Query context docs
+        Retriever->>Answer: Generate LLM response
+        Answer->>END: Final Response
+    end
+      `;
+
+      mermaid.render('mermaidSeqSvg', mermaidGraph).then(result => {
+        document.getElementById('mermaidSeqTarget').innerHTML = result.svg;
+      });
+    }
+
+    function copyCode() {
+      const codeText = document.querySelector("#codeView pre code").innerText;
+      const textArea = document.createElement("textarea");
+      textArea.value = codeText;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      alert("Python graph code copied to clipboard!");
+    }
+
+    function exportMermaid() {
+      const mermaidCode = `
+graph TD
+    __START__([START]) --> router_node[router_node]
+    router_node -- "save_memory" --> extractor_node[extractor_node]
+    router_node -- "answer_question" --> retriever_node[retriever_node]
+    extractor_node --> store_node[store_node]
+    store_node --> __END__([END])
+    retriever_node --> answer_node[answer_node]
+    answer_node --> __END__([END])
+      `;
+      const textArea = document.createElement("textarea");
+      textArea.value = mermaidCode.trim();
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      alert("Mermaid definition copied to clipboard!");
+    }
+  </script>
+</body>
+</html>
