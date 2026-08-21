@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from datetime import date
-from typing import Any
+from typing import Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -15,18 +16,15 @@ from app.agent.node_config import (
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
 from app.agent.extractor_utils import _normalize_extracted_summary, _normalize_tags, _render_summary_text
 from app.agent.retriever_utils import _rerank_docs
+from app.core.config import settings
 from app.memory.store import vector_store
 
 
 # ---------------------------------------------------------------------------
-# Node functions
+# Async Node functions
 # ---------------------------------------------------------------------------
 
-def compress_node(state: dict[str, Any]) -> dict[str, Any]:
-    return state
-
-
-def router_node(state: dict[str, Any]) -> dict[str, Any]:
+async def router_node_async(state: dict[str, Any]) -> dict[str, Any]:
     """Classify the user message and decide if it's to save memory or answer a question."""
     user_message: str = state["messages"][-1]
     report_segment: str | None = ""
@@ -35,7 +33,7 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_ROUTER:
       print(f"Router node inputs: {user_message}")
 
-    response = router_llm.generate_response(
+    response = await router_llm.agenerate_response(
         messages=[
             SystemMessage(content=ROUTER_PROMPT),
             HumanMessage(content=user_message),
@@ -77,7 +75,7 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
-def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
+async def extractor_node_async(state: dict[str, Any]) -> dict[str, Any]:
     """Extract structured summary from the report segment."""
     if state.get("decision") != "save_memory":
         return {}
@@ -87,7 +85,7 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_EXTRACTOR:
       print(f"Extractor node inputs: {report_text}")
 
-    raw = chat_llm.generate_response(
+    raw = await chat_llm.agenerate_response(
         messages=[
             SystemMessage(content=EXTRACTOR_PROMPT.format(today=today)),
             HumanMessage(content=report_text),
@@ -117,7 +115,7 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def store_node(state: dict[str, Any]) -> dict[str, Any]:
+async def store_node_async(state: dict[str, Any]) -> dict[str, Any]:
     """Persist report segment + extracted summary into the vector store."""
     if state.get("decision") != "save_memory":
         return {}
@@ -135,13 +133,15 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
         normalized_summary = _render_summary_text(normalized_summary)
 
     if STORE_SAVE_RAW:
-        vector_store.add_memory(
+        await asyncio.to_thread(
+            vector_store.add_memory,
             channel_id=channel_id,
             content=report_text,
             metadata={"date": today, "type": "raw", "source": "raw", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
         )
 
-    vector_store.add_memory(
+    await asyncio.to_thread(
+        vector_store.add_memory,
         channel_id=channel_id,
         content=normalized_summary,
         metadata={"date": today, "type": "summary", "source": "summary", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
@@ -149,7 +149,7 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
     return {"store_response": "Your progress report has been saved successfully.", "response": "Your progress report has been saved successfully."}
 
 
-def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
+async def retriever_node_async(state: dict[str, Any]) -> dict[str, Any]:
     """Retrieve relevant documents from the vector store using the question segment."""
     if state.get("decision") != "answer_question":
         return {}
@@ -161,10 +161,10 @@ def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_RETRIEVER:
         print(f"Retriever node inputs: {query}")
 
-    docs = vector_store.search_memory(channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
+    docs = await asyncio.to_thread(vector_store.search_memory, channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
 
     if RERANK_ENABLED:
-        docs = _rerank_docs(query, docs)
+        docs = await asyncio.to_thread(_rerank_docs, query, docs)
 
     if DEBUG_RETRIEVER:
         print(f"Retriever node outputs:")
@@ -178,7 +178,7 @@ def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     return {"retrieved_docs": docs}
 
 
-def answer_node(state: dict[str, Any]) -> dict[str, Any]:
+async def answer_node_async(state: dict[str, Any]) -> dict[str, Any]:
     """Generate an answer using retrieved context docs."""
     if state.get("decision") != "answer_question":
         return {}
@@ -199,7 +199,7 @@ def answer_node(state: dict[str, Any]) -> dict[str, Any]:
     system_content = ANSWER_PROMPT.format(context=context_text)
     if DEBUG_ANSWER:
         print(f"Answer node inputs: {system_content}")
-    response = chat_llm.generate_response(
+    response = await chat_llm.agenerate_response(
         messages=[
             SystemMessage(content=system_content),
             HumanMessage(content=question),
@@ -208,3 +208,37 @@ def answer_node(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_ANSWER:
         print(f"Answer node outputs: {response}")
     return {"answer_response": response.strip(), "response": response.strip()}
+
+
+async def answer_node_astream(state: dict[str, Any]) -> AsyncGenerator[str, None]:
+    """Stream answer tokens from the LLM for the streaming chat endpoint."""
+    if state.get("decision") != "answer_question":
+        return
+    question: str = state.get("question_segment") or state["messages"][-1]
+    docs: list[dict[str, Any]] = state.get("retrieved_docs") or []
+
+    if not docs:
+        context_text = "(No relevant memories found for this channel.)"
+    else:
+        parts: list[str] = []
+        for i, doc in enumerate(docs, start=1):
+            meta = doc.get("metadata", {})
+            doc_date = meta.get("date", "unknown")
+            doc_type = meta.get("type", "unknown")
+            parts.append(f"[{i}] ({doc_date}, {doc_type})\n{doc['content']}")
+        context_text = "\n\n---\n\n".join(parts)
+
+    system_content = ANSWER_PROMPT.format(context=context_text)
+
+    if DEBUG_ANSWER:
+        print(f"Answer node inputs: {system_content}")
+    # Use stream_response instead of astream
+    messages = [
+        SystemMessage(content=system_content),
+        HumanMessage(content=question),
+    ]
+
+    # stream_response is a synchronous generator, so we iterate over it directly
+    for chunk in chat_llm.stream_response(messages=messages):
+        if chunk:
+            yield chunk

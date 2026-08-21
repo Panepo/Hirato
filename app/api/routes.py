@@ -12,18 +12,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from app.agent.graph import secretary_graph
-from app.agent.nodes import (
+from app.agent.node_config import chat_llm, router_llm
+from app.agent.node_async import (
     answer_node_astream,
-    chat_llm,
-    router_llm,
-    extractor_node,
-    retriever_node,
-    router_node,
     router_node_async,
     extractor_node_async,
     store_node_async,
     retriever_node_async,
-    store_node,
 )
 from app.agent.prompts import TITLE_PROMPT
 from app.core.config import settings
