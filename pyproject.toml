@@ -19,6 +19,7 @@ dependencies = [
     "python-telegram-bot>=21.0",
     "lancedb>=0.37.1",
     "pylance>=10.0.0",
+    "rank-bm25",
 ]
 
 [tool.poe.tasks]

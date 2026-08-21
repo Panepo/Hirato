@@ -16,6 +16,7 @@ from typing import Any
 
 import lancedb
 import pyarrow as pa
+from rank_bm25 import BM25Okapi
 
 from app.core.config import settings
 from app.core.embedding import EmbeddingInference
@@ -72,7 +73,37 @@ def _normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 def _row_to_doc(row: dict[str, Any]) -> dict[str, Any]:
     metadata = {key: row.get(key, "") for key in _METADATA_FIELDS}
     metadata["tags"] = row.get("tags", "[]")
-    return {"content": row.get("document", ""), "metadata": metadata, "distance": row.get("_distance")}
+    return {"id": row.get("id"), "content": row.get("document", ""), "metadata": metadata, "distance": row.get("_distance")}
+
+
+def _tokenize(text: str) -> list[str]:
+    """Lowercase whitespace tokenisation (fast, language-agnostic) for BM25."""
+    return text.lower().split()
+
+
+class BM25Index:
+    """Keyword (BM25) index over a channel's rows.
+
+    Build once per channel with :meth:`from_rows` (or ``LanceStore.build_bm25_index``)
+    and reuse across queries to avoid re-tokenising the whole table every call.
+    """
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+        tokenized = [_tokenize(row.get("document", "")) for row in rows]
+        self._bm25 = BM25Okapi(tokenized) if tokenized else None
+
+    @staticmethod
+    def from_rows(rows: list[dict[str, Any]]) -> "BM25Index":
+        return BM25Index(rows)
+
+    def search(self, query: str, top_k: int) -> list[dict[str, Any]]:
+        """Return the top_k highest-scoring rows for query as doc dicts."""
+        if self._bm25 is None:
+            return []
+        scores = self._bm25.get_scores(_tokenize(query))
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
+        return [_row_to_doc(self._rows[i]) for i in top_indices]
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +322,23 @@ class LanceStore:
         if sort_by_date:
             docs.sort(key=lambda d: d["metadata"].get("date") or "1970-01-01", reverse=True)
         return docs
+
+    def build_bm25_index(self, channel_id: str) -> BM25Index:
+        """Build a keyword index over a channel's rows; reuse across queries via search_memory_bm25's bm25_index arg."""
+        collection = self.get_or_create_collection(channel_id)
+        rows = collection.search().to_list()
+        return BM25Index(rows)
+
+    def search_memory_bm25(
+        self,
+        channel_id: str,
+        query: str,
+        n_results: int = 5,
+        bm25_index: BM25Index | None = None,
+    ) -> list[dict[str, Any]]:
+        """Keyword (BM25) search over a channel, complementing search_memory's dense vector search."""
+        index = bm25_index or self.build_bm25_index(channel_id)
+        return index.search(query, top_k=n_results)
 
     def list_memories(self, channel_id: str) -> list[dict[str, Any]]:
         """Return all documents for a channel as preview dicts, sorted by date descending."""

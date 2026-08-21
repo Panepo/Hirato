@@ -8,13 +8,13 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.node_config import (
-    RERANK_ENABLED, RERANK_TOP_N, STORE_SAVE_RAW, TOP_N,
+    HYBRID_RETRIEVAL_ENABLED, RERANK_ENABLED, RERANK_TOP_N, STORE_SAVE_RAW, TOP_N,
     DEBUG_ANSWER, DEBUG_EXTRACTOR, DEBUG_RETRIEVER, DEBUG_ROUTER, DEBUG_STORE,
     chat_llm, router_llm, reranker
 )
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
 from app.agent.extractor_utils import _normalize_extracted_summary, _normalize_tags, _render_summary_text
-from app.agent.retriever_utils import _rerank_docs
+from app.agent.retriever_utils import _rerank_docs, retrieve_hybrid
 from app.memory.store import vector_store
 
 
@@ -161,7 +161,10 @@ def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_RETRIEVER:
         print(f"Retriever node inputs: {query}")
 
-    docs = vector_store.search_memory(channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
+    if HYBRID_RETRIEVAL_ENABLED:
+        docs = retrieve_hybrid(channel_id=channel_id, query=query, top_k=TOP_N)
+    else:
+        docs = vector_store.search_memory(channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
 
     if RERANK_ENABLED:
         docs = _rerank_docs(query, docs)

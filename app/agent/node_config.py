@@ -2,9 +2,11 @@
 # CONFIG
 # ---------------------------------------------------------------------------
 STORE_SAVE_RAW = False
-TOP_N = 100
-RERANK_TOP_N = 20
+TOP_N = 20
+HYBRID_RETRIEVAL_ENABLED = True
+
 RERANK_ENABLED = True
+RERANK_TOP_N = 5
 
 # ---------------------------------------------------------------------------
 # DEBUG
