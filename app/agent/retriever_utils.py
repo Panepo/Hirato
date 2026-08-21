@@ -1,7 +1,7 @@
 from typing import Any
 
 from app.agent.nodes import reranker, DEBUG_RETRIEVER, RERANK_TOP_N
-from app.memory.store import BM25Index, vector_store
+from app.memory.store import BM25Index, _strip_embedding_boilerplate, vector_store
 
 
 def reciprocal_rank_fusion(
@@ -73,7 +73,9 @@ def _rerank_docs(query: str, docs: list[dict[str, Any]], top_n: int = RERANK_TOP
         return docs[:top_n]
 
     try:
-        results = reranker.rerank(query, [doc.get("content", "") for doc in docs], top_n=top_n)
+        # Strip the "[Document: X | Section: Y]" header so it doesn't dilute the cross-encoder's relevance signal.
+        doc_texts = [_strip_embedding_boilerplate(doc.get("content", "")) for doc in docs]
+        results = reranker.rerank(query, doc_texts, top_n=top_n)
     except Exception as exc:
         if DEBUG_RETRIEVER:
             print(f"Reranker failed, falling back to original order: {exc}")
