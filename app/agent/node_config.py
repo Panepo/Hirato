@@ -14,7 +14,7 @@ RERANK_TOP_N = 10
 DEBUG_ROUTER = False
 DEBUG_EXTRACTOR = False
 DEBUG_STORE = False
-DEBUG_RETRIEVER = True
+DEBUG_RETRIEVER = False
 DEBUG_ANSWER = False
 
 # ---------------------------------------------------------------------------

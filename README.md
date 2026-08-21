@@ -59,19 +59,19 @@ Create a `.env` file in the project root:
 PORT=7950
 
 # LLM
-CHAT_MODEL='Qwen-AgentWorld-35B-A3B'
-CHAT_BASE_URL='http://10.168.3.58/v1'
-CHAT_API_KEY='sk-F7qFAdI1JWOzLqDRhAtSww'
+CHAT_MODEL=''
+CHAT_BASE_URL=''
+CHAT_API_KEY=''
 
 # Router
-CHAT_MODEL_ROUTER='Qwen2.5-7B-Instruct'
-ROUTER_BASE_URL='http://10.68.129.74/v1'
-ROUTER_API_KEY='sk-fattm5rfSe5LAZ680jxcAw'
+CHAT_MODEL_ROUTER=''
+ROUTER_BASE_URL=''
+ROUTER_API_KEY=''
 
 # Embedding
-EMBEDDING_MODEL='bge-m3'
-EMBEDDING_BASE_URL='http://10.68.129.74/v1'
-EMBEDDING_API_KEY='sk-fattm5rfSe5LAZ680jxcAw'
+EMBEDDING_MODEL=''
+EMBEDDING_BASE_URL=''
+EMBEDDING_API_KEY=''
 
 LANCEDB_PERSIST_PATH=./lancedb_db   # local path for LanceDB storage
 ```
