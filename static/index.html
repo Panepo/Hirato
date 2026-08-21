@@ -763,6 +763,24 @@
       display: none;
     }
 
+    .memory-subgroup {
+      border-top: none;
+    }
+
+    .memory-subgroup-header {
+      padding-left: 1.75rem;
+      background: #eef2ff;
+      color: #6366f1;
+    }
+
+    .memory-subgroup-header:hover {
+      background: #e0e7ff;
+    }
+
+    .memory-subgroup .memory-item {
+      padding-left: 1.5rem;
+    }
+
     /* ---- Memory detail view ---- */
     #memory-detail-view {
       display: flex;
@@ -950,7 +968,8 @@
       </div>
 
       <!-- Hidden file inputs -->
-      <input type="file" id="file-input-docs" multiple accept=".pdf,.doc,.docx,.txt,.md,.csv,.xls,.xlsx"
+      <input type="file" id="file-input-docs" multiple
+        accept=".pdf,.doc,.docx,.odt,.rtf,.html,.htm,.xlsx,.xls,.csv,.pptx,.ppt,.json,.png,.jpg,.jpeg,.gif,.bmp,.tiff,.webp,.md,.txt"
         style="display:none" />
       <input type="file" id="memory-file-input" accept=".json" style="display:none" />
     </div>
@@ -1487,12 +1506,12 @@
       return row;
     }
 
-    function renderMemoryGroup(label, items) {
+    function renderGroupShell(label, count, extraClass) {
       const group = document.createElement('div');
-      group.className = 'memory-group';
+      group.className = extraClass ? `memory-group ${extraClass}` : 'memory-group';
 
       const header = document.createElement('div');
-      header.className = 'memory-group-header';
+      header.className = extraClass ? `memory-group-header ${extraClass}-header` : 'memory-group-header';
 
       const toggle = document.createElement('span');
       toggle.className = 'memory-group-toggle';
@@ -1503,7 +1522,7 @@
 
       const countSpan = document.createElement('span');
       countSpan.className = 'memory-group-count';
-      countSpan.textContent = `${items.length}`;
+      countSpan.textContent = `${count}`;
 
       header.appendChild(toggle);
       header.appendChild(labelSpan);
@@ -1517,10 +1536,33 @@
         toggle.textContent = itemsDiv.classList.contains('collapsed') ? '▶' : '▼';
       });
 
-      items.forEach(item => itemsDiv.appendChild(renderMemoryItem(item, countSpan, itemsDiv)));
-
       group.appendChild(header);
       group.appendChild(itemsDiv);
+      return { group, itemsDiv, countSpan };
+    }
+
+    function renderMemoryGroup(label, items, extraClass) {
+      const { group, itemsDiv, countSpan } = renderGroupShell(label, items.length, extraClass);
+      items.forEach(item => itemsDiv.appendChild(renderMemoryItem(item, countSpan, itemsDiv)));
+      return group;
+    }
+
+    function groupReferenceDocsBySource(items) {
+      const bySource = new Map();
+      items.forEach(item => {
+        const key = item.source && item.source !== 'reference_doc' ? item.source : 'Unknown file';
+        if (!bySource.has(key)) bySource.set(key, []);
+        bySource.get(key).push(item);
+      });
+      return new Map([...bySource.entries()].sort((a, b) => a[0].localeCompare(b[0])));
+    }
+
+    function renderReferenceDocsGroup(label, items) {
+      const { group, itemsDiv } = renderGroupShell(label, items.length);
+      const bySource = groupReferenceDocsBySource(items);
+      bySource.forEach((fileItems, fileName) => {
+        itemsDiv.appendChild(renderMemoryGroup(fileName, fileItems, 'memory-subgroup'));
+      });
       return group;
     }
 
@@ -1553,7 +1595,7 @@
           const refItems = items.filter(i => i.type === 'reference_doc');
           const otherItems = items.filter(i => !['raw', 'summary', 'reference_doc'].includes(i.type));
           if (channelItems.length > 0) memoryList.appendChild(renderMemoryGroup('Channel Memory', channelItems));
-          if (refItems.length > 0) memoryList.appendChild(renderMemoryGroup('Reference Docs', refItems));
+          if (refItems.length > 0) memoryList.appendChild(renderReferenceDocsGroup('Reference Docs', refItems));
           if (otherItems.length > 0) memoryList.appendChild(renderMemoryGroup('Other', otherItems));
           memoryList.style.display = '';
           memoryCount.textContent = `(${items.length} item${items.length !== 1 ? 's' : ''})`;

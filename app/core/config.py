@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     VLM_TEMPERATURE: float = 0.1
     VLM_MAX_TOKENS: int = 8192
 
-    CHROMA_PERSIST_PATH: str = "./chroma_db"
+    LANCEDB_PERSIST_PATH: str = "./lancedb_db"
+    EMBEDDING_DIMENSION: int = 0  # 0 = auto-detect from the embedding model on first use
     SESSIONS_DB_PATH: str = "./sessions.db"
 
     PORT: int = 7950

@@ -8,103 +8,21 @@ from typing import Any, AsyncGenerator
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.agent.node_config import (
+    RERANK_ENABLED, RERANK_TOP_N, STORE_SAVE_RAW, TOP_N,
+    DEBUG_ANSWER, DEBUG_EXTRACTOR, DEBUG_RETRIEVER, DEBUG_ROUTER, DEBUG_STORE,
+    chat_llm, router_llm, reranker
+)
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
+from app.agent.extractor_utils import _normalize_extracted_summary, _normalize_tags, _render_summary_text
+from app.agent.retriever_utils import _rerank_docs
 from app.core.config import settings
-from app.core.llm import LLMInference
-from app.core.router import RouterInference
-from app.memory.store import chroma_store
-
-# ---------------------------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------------------------
-STORE_SAVE_RAW = False
-
-# ---------------------------------------------------------------------------
-# DEBUG
-# ---------------------------------------------------------------------------
-DEBUG_ROUTER = False
-DEBUG_EXTRACTOR = False
-DEBUG_STORE = False
-DEBUG_RETRIEVER = False
-DEBUG_ANSWER = False
-
-# ---------------------------------------------------------------------------
-# LLM clients
-# ---------------------------------------------------------------------------
-
-chat_llm = LLMInference(temperature=0.1)
-router_llm = RouterInference(temperature=0.0) # Fast model
+from app.memory.store import vector_store
 
 
 # ---------------------------------------------------------------------------
 # Node functions
 # ---------------------------------------------------------------------------
-
-def _normalize_tags(tags: Any) -> list[str]:
-    if isinstance(tags, str):
-        try:
-            parsed = json.loads(tags)
-            if isinstance(parsed, list):
-                tags = parsed
-            else:
-                tags = [parsed]
-        except json.JSONDecodeError:
-            tags = [part.strip() for part in tags.split(',') if part.strip()]
-    elif not isinstance(tags, list):
-        tags = [tags] if tags is not None else []
-
-    normalized = []
-    for tag in tags:
-        text = str(tag).strip()
-        if text:
-            normalized.append(text)
-    return normalized[:5]
-
-
-def _normalize_extracted_summary(raw: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
-    if isinstance(raw, str):
-        cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-        try:
-            parsed = json.loads(cleaned)
-            if isinstance(parsed, dict):
-                payload = parsed
-        except json.JSONDecodeError:
-            pass
-    elif isinstance(raw, dict):
-        payload = raw
-
-    payload.setdefault("title", "Progress report")
-    payload.setdefault("week", date.today().isoformat())
-    payload["tags"] = _normalize_tags(payload.get("tags", ["report", "progress"]))
-    if not payload["tags"]:
-        payload["tags"] = ["report", "progress"]
-    return payload
-
-
-def _render_summary_text(extracted: dict[str, Any]) -> str:
-    sections: list[str] = []
-    for key, label in [
-        ("accomplishments", "Accomplishments"),
-        ("blockers", "Blockers"),
-        ("next_steps", "Next steps"),
-    ]:
-        values = extracted.get(key, [])
-        if isinstance(values, str):
-            values = [values]
-        if not values:
-            continue
-        lines = []
-        for item in values:
-            text = str(item).strip()
-            if text:
-                lines.append(f"- {text}")
-        if lines:
-            sections.append(f"{label}:\n" + "\n".join(lines))
-    if sections:
-        return "\n\n".join(sections)
-    return str(extracted.get("summary") or extracted.get("content") or extracted.get("title", "")).strip()
-
 
 def compress_node(state: dict[str, Any]) -> dict[str, Any]:
     return state
@@ -123,7 +41,8 @@ async def router_node_async(state: dict[str, Any]) -> dict[str, Any]:
             SystemMessage(content=ROUTER_PROMPT),
             HumanMessage(content=user_message),
         ],
-        max_tokens=256
+        max_tokens=256,
+        think=False
     )
     try:
         if DEBUG_ROUTER:
@@ -173,7 +92,8 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
             SystemMessage(content=ROUTER_PROMPT),
             HumanMessage(content=user_message),
         ],
-        max_tokens=256
+        max_tokens=256,
+        think=False
     )
     try:
         if DEBUG_ROUTER:
@@ -250,7 +170,7 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def store_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Persist report segment + extracted summary into ChromaDB."""
+    """Persist report segment + extracted summary into the vector store."""
     if state.get("decision") != "save_memory":
         return {}
     channel_id: str = state["channel_id"]
@@ -267,13 +187,13 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
         normalized_summary = _render_summary_text(normalized_summary)
 
     if STORE_SAVE_RAW:
-        chroma_store.add_memory(
+        vector_store.add_memory(
             channel_id=channel_id,
             content=report_text,
             metadata={"date": today, "type": "raw", "source": "raw", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
         )
 
-    chroma_store.add_memory(
+    vector_store.add_memory(
         channel_id=channel_id,
         content=normalized_summary,
         metadata={"date": today, "type": "summary", "source": "summary", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
@@ -282,7 +202,7 @@ def store_node(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Retrieve relevant documents from ChromaDB using the question segment."""
+    """Retrieve relevant documents from the vector store using the question segment."""
     if state.get("decision") != "answer_question":
         return {}
     channel_id: str = state["channel_id"]
@@ -293,10 +213,19 @@ def retriever_node(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_RETRIEVER:
         print(f"Retriever node inputs: {query}")
 
-    docs = chroma_store.search_memory(channel_id=channel_id, query=query, n_results=5)
+    docs = vector_store.search_memory(channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
+
+    if RERANK_ENABLED:
+        docs = _rerank_docs(query, docs)
 
     if DEBUG_RETRIEVER:
-        print(f"Retriever node outputs: {docs}")
+        print(f"Retriever node outputs:")
+        for doc in docs:
+            meta = doc.get("metadata", {})
+            doc_source = meta.get("source", "unknown")
+            doc_section = meta.get("section", "unknown")
+            doc_content = doc.get("content", "")
+            print(f"Doc: ({doc_source}, {doc_section})\n{doc_content}\n---")
 
     return {"retrieved_docs": docs}
 
@@ -342,7 +271,7 @@ async def extractor_node_async(state: dict[str, Any]) -> dict[str, Any]:
 
 
 async def store_node_async(state: dict[str, Any]) -> dict[str, Any]:
-    """Persist report segment + extracted summary into ChromaDB."""
+    """Persist report segment + extracted summary into the vector store."""
     if state.get("decision") != "save_memory":
         return {}
     channel_id: str = state["channel_id"]
@@ -360,14 +289,14 @@ async def store_node_async(state: dict[str, Any]) -> dict[str, Any]:
 
     if STORE_SAVE_RAW:
         await asyncio.to_thread(
-            chroma_store.add_memory,
+            vector_store.add_memory,
             channel_id=channel_id,
             content=report_text,
             metadata={"date": today, "type": "raw", "source": "raw", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
         )
 
     await asyncio.to_thread(
-        chroma_store.add_memory,
+        vector_store.add_memory,
         channel_id=channel_id,
         content=normalized_summary,
         metadata={"date": today, "type": "summary", "source": "summary", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
@@ -376,7 +305,7 @@ async def store_node_async(state: dict[str, Any]) -> dict[str, Any]:
 
 
 async def retriever_node_async(state: dict[str, Any]) -> dict[str, Any]:
-    """Retrieve relevant documents from ChromaDB using the question segment."""
+    """Retrieve relevant documents from the vector store using the question segment."""
     if state.get("decision") != "answer_question":
         return {}
     channel_id: str = state["channel_id"]
@@ -387,10 +316,19 @@ async def retriever_node_async(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_RETRIEVER:
         print(f"Retriever node inputs: {query}")
 
-    docs = await asyncio.to_thread(chroma_store.search_memory, channel_id=channel_id, query=query, n_results=5)
+    docs = await asyncio.to_thread(vector_store.search_memory, channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
+
+    if RERANK_ENABLED:
+        docs = await asyncio.to_thread(_rerank_docs, query, docs)
 
     if DEBUG_RETRIEVER:
-        print(f"Retriever node outputs: {docs}")
+        print(f"Retriever node outputs:")
+        for doc in docs:
+            meta = doc.get("metadata", {})
+            doc_source = meta.get("source", "unknown")
+            doc_section = meta.get("section", "unknown")
+            doc_content = doc.get("content", "")
+            print(f"Doc: ({doc_source}, {doc_section})\n{doc_content}\n---")
 
     return {"retrieved_docs": docs}
 

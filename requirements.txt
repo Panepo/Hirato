@@ -6,7 +6,8 @@ langchain-openai
 fastapi
 uvicorn[standard]
 requests
-chromadb
+lancedb
+pylance
 python-dotenv
 python-multipart
 aiosqlite

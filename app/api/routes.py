@@ -19,13 +19,17 @@ from app.agent.nodes import (
     extractor_node,
     retriever_node,
     router_node,
+    router_node_async,
+    extractor_node_async,
+    store_node_async,
+    retriever_node_async,
     store_node,
 )
 from app.agent.prompts import TITLE_PROMPT
 from app.core.config import settings
 from app.core.indexer import IndexerClient
 from app.memory.sessions import sessions_store
-from app.memory.store import chroma_store
+from app.memory.store import vector_store
 
 router = APIRouter(prefix="/api")
 
@@ -71,7 +75,7 @@ class ChatResponse(BaseModel):
 
 @router.get("/channels")
 async def list_channels() -> list[str]:
-    return chroma_store.list_channels()
+    return vector_store.list_channels()
 
 
 @router.post("/channels", status_code=201)
@@ -82,14 +86,14 @@ async def create_channel(body: NewChannelRequest) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Channel name too short or contains only invalid characters (min 3 alphanumeric).")
     if not channel_id:
         raise HTTPException(status_code=400, detail="Channel name cannot be empty.")
-    chroma_store.get_or_create_collection(channel_id)
+    vector_store.get_or_create_collection(channel_id)
     return {"channel_id": channel_id, "description": body.description}
 
 
 @router.delete("/channels/{channel_id}", status_code=200)
 async def delete_channel(channel_id: str) -> dict[str, bool]:
     try:
-        chroma_store.delete_channel(channel_id)
+        vector_store.delete_channel(channel_id)
         # Delete all chat sessions belonging to this channel
         await sessions_store.delete_channel_sessions(channel_id)
     except Exception as exc:
@@ -100,7 +104,7 @@ async def delete_channel(channel_id: str) -> dict[str, bool]:
 @router.get("/channels/{channel_id}/memories")
 async def list_memories(channel_id: str) -> list[dict]:
     try:
-        return chroma_store.list_memories(channel_id)
+        return vector_store.list_memories(channel_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -111,7 +115,7 @@ async def delete_memories(channel_id: str, body: BulkDeleteMemoriesRequest) -> d
         deleted = len([memory_id for memory_id in body.memory_ids if str(memory_id).strip()])
         if deleted == 0:
             return {"deleted": 0, "ok": True}
-        chroma_store.delete_memories(channel_id, body.memory_ids)
+        vector_store.delete_memories(channel_id, body.memory_ids)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"deleted": deleted, "ok": True}
@@ -120,7 +124,7 @@ async def delete_memories(channel_id: str, body: BulkDeleteMemoriesRequest) -> d
 @router.delete("/channels/{channel_id}/memories/{memory_id}", status_code=200)
 async def delete_memory(channel_id: str, memory_id: str) -> dict[str, bool]:
     try:
-        chroma_store.delete_memory(channel_id, memory_id)
+        vector_store.delete_memory(channel_id, memory_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
@@ -129,7 +133,7 @@ async def delete_memory(channel_id: str, memory_id: str) -> dict[str, bool]:
 @router.put("/channels/{channel_id}/memories/{memory_id}")
 async def update_memory(channel_id: str, memory_id: str, body: UpdateMemoryRequest) -> dict[str, bool]:
     try:
-        chroma_store.update_memory(channel_id, memory_id, body.content)
+        vector_store.update_memory(channel_id, memory_id, body.content)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
@@ -138,7 +142,7 @@ async def update_memory(channel_id: str, memory_id: str, body: UpdateMemoryReque
 @router.post("/channels/{channel_id}/memories/import", status_code=200)
 async def import_memories_endpoint(channel_id: str, body: ImportMemoriesRequest) -> dict[str, int]:
     try:
-        result = chroma_store.import_memories(channel_id, body.memories)
+        result = vector_store.import_memories(channel_id, body.memories)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return result
@@ -270,6 +274,8 @@ async def chat(body: ChatRequest) -> ChatResponse:
 
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest) -> StreamingResponse:
+    gen_start = time.perf_counter()  # start timing from user input, before any preprocessing
+
     # Resolve or create session (channel_id may be empty if resolved from message)
     session_id = body.session_id
     if body.channel_id and not session_id:
@@ -320,7 +326,6 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
 
     async def event_generator():
         full_response_parts: list[str] = []
-        gen_start = time.perf_counter()
         first_chunk_at: float | None = None
         last_chunk_at: float | None = None
 
@@ -419,7 +424,7 @@ async def import_embedded_json(
                 detail=f"Chunk at index {i} is missing 'chunk_id' or 'chunk_text_embedded'.",
             )
 
-    result = chroma_store.import_chunks(channel_id=channel_id, chunks=chunks)
+    result = vector_store.import_chunks(channel_id=channel_id, chunks=chunks)
     return result
 
 
@@ -438,8 +443,28 @@ async def import_documents(
     import tempfile
     import os
 
+    # Document processing extensions
+    _DOCLING_EXTENSIONS = {'.pdf', '.docx', '.doc', '.odt', '.rtf', '.html', '.htm'}
+    _EXCEL_EXTENSIONS = {'.xlsx', '.xls'}
+    _CSV_EXTENSIONS = {'.csv'}
+    _PPTX_EXTENSIONS = {'.pptx', '.ppt'}
+    _JSON_EXTENSIONS = {'.json'}
+    _IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'}
+    _PASSTHROUGH_EXTENSIONS = {'.md', '.txt'}
+
+    _SUPPORTED_EXTENSIONS = (
+        _DOCLING_EXTENSIONS | _EXCEL_EXTENSIONS | _CSV_EXTENSIONS |
+        _PPTX_EXTENSIONS | _JSON_EXTENSIONS | _IMAGE_EXTENSIONS | _PASSTHROUGH_EXTENSIONS
+    )
+
     for file in files:
         if not file.filename:
+            continue
+
+        # Check file extension
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if file_ext not in _SUPPORTED_EXTENSIONS:
+            failed_files.append({"file": file.filename, "error": f"Unsupported file type: {file_ext}"})
             continue
 
         # Create a temporary file to store the uploaded document with the original filename
@@ -458,9 +483,9 @@ async def import_documents(
             # Process document through indexer
             chunks_data = indexer_client.process_document(tmp_file_path)
 
-            # Import chunks to chroma store
+            # Import chunks to the vector store
             if "chunks" in chunks_data and isinstance(chunks_data["chunks"], list):
-                result = chroma_store.import_chunks(channel_id=channel_id, chunks=chunks_data["chunks"])
+                result = vector_store.import_chunks(channel_id=channel_id, chunks=chunks_data["chunks"])
                 imported_count += result.get("imported", 0)
                 skipped_count += result.get("skipped", 0)
             else:
@@ -485,7 +510,7 @@ async def import_documents(
 @router.delete("/channels/{channel_id}", status_code=204)
 async def delete_channel_nocontent(channel_id: str) -> None:
     try:
-        chroma_store.delete_channel(channel_id)
+        vector_store.delete_channel(channel_id)
         # Delete all chat sessions belonging to this channel
         await sessions_store.delete_channel_sessions(channel_id)
     except Exception as exc:

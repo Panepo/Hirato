@@ -18,7 +18,7 @@ from app.bot.auth import require_auth
 from app.bot.telegram_sessions import telegram_session_manager
 from app.core.config import settings
 from app.memory.sessions import sessions_store
-from app.memory.store import chroma_store
+from app.memory.store import vector_store
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.agent.nodes import chat_llm
 
@@ -41,7 +41,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    projects = chroma_store.list_channels()
+    projects = vector_store.list_channels()
     if not projects:
         await update.effective_message.reply_text(  # type: ignore[union-attr]
             "✅ You are authenticated.\n"
@@ -101,7 +101,7 @@ async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     chat_id: int = update.effective_chat.id  # type: ignore[union-attr]
     args = context.args or []
 
-    all_channels = chroma_store.list_channels()
+    all_channels = vector_store.list_channels()
 
     # /channel new <name> — create a new channel
     if args and args[0].lower() == "new":
@@ -119,8 +119,7 @@ async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 "❌ Channel name too short (min 3 alphanumeric characters)."
             )
             return
-        from app.memory.store import chroma_store as _store
-        _store.get_or_create_collection(channel_id)
+        vector_store.get_or_create_collection(channel_id)
         await update.effective_message.reply_text(  # type: ignore[union-attr]
             f"✅ Channel *{channel_id}* created.",
             parse_mode="Markdown",

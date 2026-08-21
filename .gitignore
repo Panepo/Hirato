@@ -183,5 +183,6 @@ cython_debug/
 # Custom
 .github/reference/*
 chroma_db/*
+lancedb_db/*
 *.db
 deployment/*

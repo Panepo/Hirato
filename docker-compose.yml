@@ -9,7 +9,7 @@ services:
     depends_on:
       - fukae
     volumes:
-      - ./hirato-chroma:/app/chroma_db
+      - ./hirato-lancedb:/app/lancedb_db
       - ./hirato-data:/app/data
     environment:
       - PORT=${PORT}
@@ -37,7 +37,7 @@ services:
       - CHUNK_OVERLAP=${CHUNK_OVERLAP}
       - VLM_TEMPERATURE=${VLM_TEMPERATURE}
       - VLM_MAX_TOKENS=${VLM_MAX_TOKENS}
-      - CHROMA_PERSIST_PATH=/app/chroma_db
+      - LANCEDB_PERSIST_PATH=/app/lancedb_db
       - SESSIONS_DB_PATH=/app/data/sessions.db
     extra_hosts:
       - host.docker.internal:host-gateway

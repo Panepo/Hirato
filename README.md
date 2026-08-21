@@ -1,6 +1,6 @@
 # Hirato — LLM Project Secretary
 
-An AI-powered project secretary that lets teams log progress reports and query project history through a chat interface. Built with FastAPI, LangGraph, ChromaDB, and OpenAI-compatible LLMs.
+An AI-powered project secretary that lets teams log progress reports and query project history through a chat interface. Built with FastAPI, LangGraph, LanceDB, and OpenAI-compatible LLMs.
 
 ## Features
 
@@ -18,14 +18,14 @@ User message
      ▼
  router_node          ← classifies intent
      │
-     ├─ progress_report ─► extractor_node ─► store_node ─► ChromaDB
+     ├─ progress_report ─► extractor_node ─► store_node ─► LanceDB
      │
      └─ question        ─► retriever_node ─► answer_node ─► response
 ```
 
 The LangGraph agent runs two paths:
-- **Report path**: LLM extracts a JSON summary → both raw text and summary are upserted into ChromaDB
-- **Question path**: ChromaDB semantic search retrieves the top-5 relevant memories → LLM generates an answer from context
+- **Report path**: LLM extracts a JSON summary → both raw text and summary are upserted into LanceDB
+- **Question path**: LanceDB semantic search retrieves the top-5 relevant memories → LLM generates an answer from context
 
 ## Tech Stack
 
@@ -35,7 +35,7 @@ The LangGraph agent runs two paths:
 | Agent orchestration | LangGraph |
 | LLM inference | OpenAI-compatible LLMs |
 | Embeddings | OpenAI-compatible embeddings |
-| Vector store | ChromaDB (persistent, local) |
+| Vector store | LanceDB (persistent, local, embedded) |
 | Frontend | Vanilla HTML/CSS/JS (served as static files) |
 
 ## Requirements
@@ -73,7 +73,7 @@ EMBEDDING_MODEL='bge-m3'
 EMBEDDING_BASE_URL='http://10.68.129.74/v1'
 EMBEDDING_API_KEY='sk-fattm5rfSe5LAZ680jxcAw'
 
-CHROMA_PERSIST_PATH=./chroma_db   # local path for ChromaDB storage
+LANCEDB_PERSIST_PATH=./lancedb_db   # local path for LanceDB storage
 ```
 
 ## Running

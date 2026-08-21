@@ -2,7 +2,7 @@
 
 ## Overview
 
-Hirato is a FastAPI application backed by a LangGraph agent. It gives each channel a persistent vector memory (ChromaDB) and can handle mixed messages that contain both a progress report **and** a question in a single input. All LLM inference is handled by an OpenAI-compatible LLM server. Chat history is persisted in a local SQLite database (`sessions.db`), surfaced through a left sidebar in the frontend.
+Hirato is a FastAPI application backed by a LangGraph agent. It gives each channel a persistent vector memory (LanceDB) and can handle mixed messages that contain both a progress report **and** a question in a single input. All LLM inference is handled by an OpenAI-compatible LLM server. Chat history is persisted in a local SQLite database (`sessions.db`), surfaced through a left sidebar in the frontend.
 
 ---
 
@@ -14,7 +14,7 @@ Hirato is a FastAPI application backed by a LangGraph agent. It gives each chann
 | **API Routes** (`app/api/routes.py`) | Request parsing, validation, session management, response shaping |
 | **LangGraph Agent** (`app/agent/graph.py`) | Stateful graph orchestrating all node transitions |
 | **Agent Nodes** (`app/agent/nodes.py`) | Individual processing steps (router, extractor, store, retriever, answer) |
-| **ChromaStore** (`app/memory/store.py`) | Persistent vector memory backed by ChromaDB |
+| **LanceStore** (`app/memory/store.py`) | Persistent vector memory backed by LanceDB |
 | **SQLiteSessionStore** (`app/memory/sessions.py`) | Persistent chat sessions and message history backed by SQLite + aiosqlite |
 | **OpenAI-compatible LLM** (external) | LLM inference for routing, extraction, answering, title generation, and embedding |
 
@@ -24,7 +24,7 @@ Hirato is a FastAPI application backed by a LangGraph agent. It gives each chann
 
 ```
 GET  /api/projects                         → list all project collections
-POST /api/projects                         → create a new project (ChromaDB collection)
+POST /api/projects                         → create a new project (LanceDB table)
 POST /api/chat                             → send a message; invokes the agent graph
 POST /api/projects/{project_id}/import     → bulk-import pre-embedded JSON chunks
 DELETE /api/projects/{project_id}          → delete project and all its memories
@@ -122,7 +122,7 @@ extractor_node
   │
   ▼
 store_node
-  ├── Calls: chroma_store.add_memory() × 2
+  ├── Calls: vector_store.add_memory() × 2
   │          ┌─ document: report_segment,       metadata: { date, type: "raw" }
   │          └─ document: extracted_summary,    metadata: { date, type: "summary" }
   └── Writes: state["store_response"] = "Your progress report has been saved successfully."
@@ -136,10 +136,10 @@ END
 
 ```
 retriever_node
-  ├── Calls: chroma_store.search_memory(channel_id, query, n_results=5)
+  ├── Calls: vector_store.search_memory(channel_id, query, n_results=5)
   │          ├── query = state["question_segment"]  (isolated question text)
   │          ├── OpenAI-compatible embeddings.embed_documents([query])  (embedding model)
-  │          ├── ChromaDB collection.query() — cosine similarity HNSW index
+  │          ├── LanceDB table.search() — cosine similarity vector search
   │          └── Results sorted by metadata["date"] descending (newest first)
   └── Writes: state["retrieved_docs"]
               list of { content, metadata: { date, type }, distance }
@@ -183,7 +183,7 @@ Client
 FastAPI → parse & validate JSON
   │  required shape: { "chunks": [ { chunk_id, chunk_text_embedded, ... }, ... ] }
   ▼
-chroma_store.import_chunks(project_id, chunks)
+vector_store.import_chunks(project_id, chunks)
   ├── get_or_create_collection(project_id)
   ├── Fetch existing IDs to detect duplicates
   └── Upsert new chunks:
@@ -196,13 +196,13 @@ chroma_store.import_chunks(project_id, chunks)
 
 ---
 
-## Memory Layer (ChromaDB)
+## Memory Layer (LanceDB)
 
 ```
-ChromaDB (persistent, ./chroma_db)
+LanceDB (persistent, ./lancedb_db)
   │
-  └── One Collection per channel_id
-        ├── Embedding function: Custom embedding function (cosine HNSW)
+  └── One Table per channel_id
+        ├── Vector column: cosine-similarity search over OpenAI-compatible embeddings
         └── Document types stored:
              ┌────────────────┬─────────────────────────────────────────────┐
              │ type           │ content                                     │
@@ -238,7 +238,7 @@ SQLite (./sessions.db)
 | Client | Config key | Purpose |
 |---|---|---|
 | `chat_llm` | `CHAT_MODEL` | Splitting/classification, extraction, answering, title generation — main model |
-| `EmbeddingInference` | `EMBEDDING_MODEL` | Vectorises text for ChromaDB indexing and querying |
+| `EmbeddingInference` | `EMBEDDING_MODEL` | Vectorises text for LanceDB indexing and querying |
 
 ---
 

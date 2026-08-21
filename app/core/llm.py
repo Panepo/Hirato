@@ -77,8 +77,7 @@ class LLMInference:
         bind_kwargs = {"temperature": effective_temperature}
         if max_tokens is not None:
             bind_kwargs["max_tokens"] = max_tokens
-        if think:
-            bind_kwargs["thinking"] = {"type": "enabled"}
+        bind_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": think}}
         llm_with_temperature = self.llm.bind(**bind_kwargs)
         response = llm_with_temperature.invoke(message_list)
 
@@ -144,8 +143,7 @@ class LLMInference:
 
         # Bind the temperature and thinking option to the LLM and stream
         bind_kwargs = {"temperature": effective_temperature}
-        if think:
-            bind_kwargs["thinking"] = {"type": "enabled"}
+        bind_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": think}}
         if max_tokens is not None:
             bind_kwargs["max_tokens"] = max_tokens
         llm_with_temperature = self.llm.bind(**bind_kwargs)
@@ -206,8 +204,7 @@ class LLMInference:
         bind_kwargs = {"temperature": effective_temperature}
         if max_tokens is not None:
             bind_kwargs["max_tokens"] = max_tokens
-        if think:
-            bind_kwargs["thinking"] = {"type": "enabled"}
+        bind_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": think}}
         llm_with_temperature = self.llm.bind(**bind_kwargs)
 
         # Use ainvoke for async invocation
@@ -263,8 +260,7 @@ class LLMInference:
 
         # Bind the temperature and thinking option to the LLM and stream
         bind_kwargs = {"temperature": effective_temperature}
-        if think:
-            bind_kwargs["thinking"] = {"type": "enabled"}
+        bind_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": think}}
         if max_tokens is not None:
             bind_kwargs["max_tokens"] = max_tokens
         llm_with_temperature = self.llm.bind(**bind_kwargs)
