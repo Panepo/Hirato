@@ -2,11 +2,15 @@
 # CONFIG
 # ---------------------------------------------------------------------------
 STORE_SAVE_RAW = False
-TOP_N = 20
-HYBRID_RETRIEVAL_ENABLED = True
 
-RERANK_ENABLED = False
-RERANK_TOP_N = 10
+VECTOR_SEARCH_TOP_K = 30
+BM25_SEARCH_TOP_K = 30
+RRF_TOP_K = 30
+RERANKER_TOP_K = 10
+
+# Final score blending after reranking: Final_Score = RERANKER_SCORE_WEIGHT * ScoreReranker + BM25_SCORE_WEIGHT * ScoreBM25
+RERANKER_SCORE_WEIGHT = 0.7
+BM25_SCORE_WEIGHT = 0.3
 
 # ---------------------------------------------------------------------------
 # DEBUG
@@ -27,4 +31,4 @@ from app.core.router import RouterInference
 
 chat_llm = LLMInference(temperature=0.1)
 router_llm = RouterInference(temperature=0.0) # Fast model
-reranker = RerankingInference(top_n=RERANK_TOP_N)
+reranker = RerankingInference(top_n=RERANKER_TOP_K)

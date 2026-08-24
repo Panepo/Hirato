@@ -9,9 +9,9 @@ from typing import Any, AsyncGenerator
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.node_config import (
-    HYBRID_RETRIEVAL_ENABLED, RERANK_ENABLED, RERANK_TOP_N, STORE_SAVE_RAW, TOP_N,
+    STORE_SAVE_RAW,
     DEBUG_ANSWER, DEBUG_EXTRACTOR, DEBUG_RETRIEVER, DEBUG_ROUTER, DEBUG_STORE,
-    chat_llm, router_llm, reranker
+    chat_llm, router_llm
 )
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
 from app.agent.extractor_utils import _normalize_extracted_summary, _normalize_tags, _render_summary_text
@@ -161,13 +161,9 @@ async def retriever_node_async(state: dict[str, Any]) -> dict[str, Any]:
     if DEBUG_RETRIEVER:
         print(f"Retriever node inputs: {query}")
 
-    if HYBRID_RETRIEVAL_ENABLED:
-        docs = await asyncio.to_thread(retrieve_hybrid, channel_id=channel_id, query=query, top_k=TOP_N)
-    else:
-        docs = await asyncio.to_thread(vector_store.search_memory, channel_id=channel_id, query=query, n_results=TOP_N, sort_by_date=False)
-
-    if RERANK_ENABLED:
-        docs = await asyncio.to_thread(_rerank_docs, query, docs)
+    bm25_index = await asyncio.to_thread(vector_store.build_bm25_index, channel_id)
+    docs = await asyncio.to_thread(retrieve_hybrid, channel_id=channel_id, query=query, bm25_index=bm25_index)
+    docs = await asyncio.to_thread(_rerank_docs, query, docs, bm25_index=bm25_index)
 
     if DEBUG_RETRIEVER:
         print(f"Retriever node outputs:")

@@ -105,6 +105,18 @@ class BM25Index:
         top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
         return [_row_to_doc(self._rows[i]) for i in top_indices]
 
+    def scores_for_ids(self, query: str, ids: list[str]) -> dict[str, float]:
+        """Return raw BM25 scores for the given doc ids, for score blending with other rankers."""
+        if self._bm25 is None or not ids:
+            return {}
+        wanted = set(ids)
+        scores = self._bm25.get_scores(_tokenize(query))
+        return {
+            row["id"]: float(scores[i])
+            for i, row in enumerate(self._rows)
+            if row.get("id") in wanted
+        }
+
 
 # ---------------------------------------------------------------------------
 # Schema + table helpers
