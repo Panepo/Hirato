@@ -26,46 +26,45 @@ def _normalize_tags(tags: Any) -> list[str]:
     return normalized[:5]
 
 
-def _normalize_extracted_summary(raw: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
+def _normalize_extracted_chunks(raw: Any, fallback_content: str = "") -> list[dict[str, Any]]:
+    """Parse the extractor LLM output into a list of raw (non-summarized) per-week chunks."""
+    payload: Any = None
     if isinstance(raw, str):
         cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         try:
-            parsed = json.loads(cleaned)
-            if isinstance(parsed, dict):
-                payload = parsed
+            payload = json.loads(cleaned)
         except json.JSONDecodeError:
-            pass
-    elif isinstance(raw, dict):
+            payload = None
+    elif isinstance(raw, (list, dict)):
         payload = raw
 
-    payload.setdefault("title", "Progress report")
-    payload.setdefault("week", date.today().isoformat())
-    payload["tags"] = _normalize_tags(payload.get("tags", ["report", "progress"]))
-    if not payload["tags"]:
-        payload["tags"] = ["report", "progress"]
-    return payload
+    if isinstance(payload, dict):
+        payload = [payload]
+    if not isinstance(payload, list):
+        payload = []
 
-
-def _render_summary_text(extracted: dict[str, Any]) -> str:
-    sections: list[str] = []
-    for key, label in [
-        ("accomplishments", "Accomplishments"),
-        ("blockers", "Blockers"),
-        ("next_steps", "Next steps"),
-    ]:
-        values = extracted.get(key, [])
-        if isinstance(values, str):
-            values = [values]
-        if not values:
+    today = date.today().isoformat()
+    chunks: list[dict[str, Any]] = []
+    for item in payload:
+        if not isinstance(item, dict):
             continue
-        lines = []
-        for item in values:
-            text = str(item).strip()
-            if text:
-                lines.append(f"- {text}")
-        if lines:
-            sections.append(f"{label}:\n" + "\n".join(lines))
-    if sections:
-        return "\n\n".join(sections)
-    return str(extracted.get("summary") or extracted.get("content") or extracted.get("title", "")).strip()
+        week = str(item.get("week") or "").strip()
+        if not week or week.lower() in ("unspecified", "unknown", "n/a"):
+            week = today
+        title = str(item.get("title") or "Progress report").strip() or "Progress report"
+        tags = _normalize_tags(item.get("tags", ["report", "progress"]))
+        if not tags:
+            tags = ["report", "progress"]
+        content = str(item.get("content") or "").strip()
+        if content:
+            chunks.append({"week": week, "title": title, "tags": tags, "content": content})
+
+    # If the LLM produced nothing usable, fall back to a single chunk with the raw input text.
+    if not chunks and fallback_content.strip():
+        chunks.append({
+            "week": today,
+            "title": "Progress report",
+            "tags": ["report", "progress"],
+            "content": fallback_content.strip(),
+        })
+    return chunks

@@ -44,19 +44,31 @@ Example for "memo the following: reviewed PRs and fixed login bug":
 {"intents": ["progress_report"], "report_segment": "reviewed PRs and fixed login bug", "question_segment": null}
 """
 
-EXTRACTOR_PROMPT = """You are a channel secretary. Extract a structured summary from the user's weekly progress report.
+EXTRACTOR_PROMPT = """You are an expert data extraction assistant. Your task is to split the provided text into separate chunks by the week each part refers to. You must NOT summarize, paraphrase, condense, or rewrite anything — copy the original wording verbatim into each chunk.
+
+### Instructions:
+1. Read the text and identify which week(s) it covers. Most messages refer to a single week; only produce multiple chunks when the text clearly describes distinct work from more than one week.
+2. For each week, copy the exact sentences belonging to that week into "content", preserving original wording, casing, names, numbers, and technical terms. Do NOT summarize, drop, reorder, or invent details.
+3. Resolve any date reference (a specific date, or a relative reference such as "yesterday", "last Monday", or "last week") to a concrete ISO 8601 date (YYYY-MM-DD) using {today} as the reference point. If no date or time period is mentioned at all, use today's date ({today}).
+4. Rely ONLY on explicit facts mentioned directly in the source text. Do NOT assume, extrapolate, or hallucinate.
+5. Return the result strictly as a valid JSON array matching the target schema. Do not include introductory text, explanations, or markdown fences outside the JSON.
 
 Today's date is {today}.
 
-Return a JSON object with these keys:
-- "title": a concise 4-7 word title summarizing the report
+Return a JSON array where each element is an object with these keys:
+- "week": ISO 8601 date (YYYY-MM-DD) this chunk refers to
+- "title": a concise 4-7 word title summarizing this chunk
 - "tags": an array of 3-5 relevant tags/keywords (strings)
-- "week": approximate week or date range mentioned (string); if no date or time period is mentioned, use today's date ({today})
-- "accomplishments": list of things completed or progressed
-- "blockers": list of blockers, issues, or impediments
-- "next_steps": list of planned next actions
+- "content": the raw, verbatim text belonging to this week (copied from the source, not summarized)
 
-Return ONLY the JSON object, no explanation or markdown fences.
+Example for a message covering a single week ("memo the following: reviewed PRs and fixed login bug"):
+[{{"week": "{today}", "title": "Reviewed PRs and fixed login bug", "tags": ["code-review", "bugfix", "login"], "content": "reviewed PRs and fixed login bug"}}]
+
+Example for a message covering two distinct weeks ("Last week I fixed the login bug. This week I finished the auth module."):
+[{{"week": "2026-08-19", "title": "Fixed login bug", "tags": ["login", "bugfix"], "content": "Last week I fixed the login bug."}}, {{"week": "2026-08-26", "title": "Finished auth module", "tags": ["auth", "module"], "content": "This week I finished the auth module."}}]
+
+Return ONLY the JSON array, no explanation or markdown fences.
+
 """
 
 TITLE_PROMPT = """Generate a concise 4–7 word title for this conversation. Return only the title text, no quotes."""

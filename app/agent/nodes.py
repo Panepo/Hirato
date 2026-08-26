@@ -8,12 +8,11 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agent.node_config import (
-    STORE_SAVE_RAW,
     DEBUG_ANSWER, DEBUG_EXTRACTOR, DEBUG_RETRIEVER, DEBUG_ROUTER, DEBUG_STORE,
     chat_llm, router_llm
 )
 from app.agent.prompts import ANSWER_PROMPT, EXTRACTOR_PROMPT, ROUTER_PROMPT
-from app.agent.extractor_utils import _normalize_extracted_summary, _normalize_tags, _render_summary_text
+from app.agent.extractor_utils import _normalize_extracted_chunks
 from app.agent.retriever_utils import _rerank_docs, retrieve_hybrid
 from app.memory.store import vector_store
 
@@ -78,7 +77,7 @@ def router_node(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Extract structured summary from the report segment."""
+    """Split the report segment into raw, non-summarized chunks grouped by week."""
     if state.get("decision") != "save_memory":
         return {}
     report_text: str = state.get("report_segment") or state["messages"][-1]
@@ -93,59 +92,34 @@ def extractor_node(state: dict[str, Any]) -> dict[str, Any]:
             HumanMessage(content=report_text),
         ]
     )
-    # Enforce today as the default week if the LLM left it unspecified
-    try:
-        extracted = _normalize_extracted_summary(raw)
-        week_val = extracted.get("week", "")
-        if not week_val or week_val.lower() in ("unspecified", "unknown", "n/a", ""):
-            extracted["week"] = today
-        extracted["tags"] = _normalize_tags(extracted.get("tags", ["report", "progress"]))
-        if not extracted["tags"]:
-            extracted["tags"] = ["report", "progress"]
-        summary_text = _render_summary_text(extracted)
-        if DEBUG_EXTRACTOR:
-          print(f"Extractor node outputs: {summary_text}")
-        raw = summary_text
-
-    except (json.JSONDecodeError, AttributeError):
-        extracted = _normalize_extracted_summary({})
-        raw = _render_summary_text(extracted)
-    return {
-        "extracted_summary": raw,
-        "extracted_title": extracted.get("title", "Progress report"),
-        "extracted_tags": extracted.get("tags", ["report", "progress"])
-    }
+    chunks = _normalize_extracted_chunks(raw, fallback_content=report_text)
+    if DEBUG_EXTRACTOR:
+      print(f"Extractor node outputs: {chunks}")
+    return {"extracted_chunks": chunks}
 
 
 def store_node(state: dict[str, Any]) -> dict[str, Any]:
-    """Persist report segment + extracted summary into the vector store."""
+    """Persist each extracted per-week raw chunk into the vector store as its own memory."""
     if state.get("decision") != "save_memory":
         return {}
     channel_id: str = state["channel_id"]
     report_text: str = state.get("report_segment") or state["messages"][-1]
     today = date.today().isoformat()
 
-    title = state.get("extracted_title", "Progress report")
-    tags = _normalize_tags(state.get("extracted_tags", ["report", "progress"]))
-    if not tags:
-        tags = ["report", "progress"]
+    chunks = state.get("extracted_chunks") or _normalize_extracted_chunks({}, fallback_content=report_text)
 
-    normalized_summary = state.get("extracted_summary", "")
-    if isinstance(normalized_summary, dict):
-        normalized_summary = _render_summary_text(normalized_summary)
-
-    if STORE_SAVE_RAW:
+    for chunk in chunks:
         vector_store.add_memory(
             channel_id=channel_id,
-            content=report_text,
-            metadata={"date": today, "type": "raw", "source": "raw", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
+            content=chunk["content"],
+            metadata={
+                "date": chunk.get("week", today),
+                "type": "raw",
+                "source": "raw",
+                "title": chunk.get("title", "Progress report"),
+                "tags": json.dumps(chunk.get("tags", ["report", "progress"]), ensure_ascii=False),
+            },
         )
-
-    vector_store.add_memory(
-        channel_id=channel_id,
-        content=normalized_summary,
-        metadata={"date": today, "type": "summary", "source": "summary", "title": title, "tags": json.dumps(tags, ensure_ascii=False)},
-    )
     return {"store_response": "Your progress report has been saved successfully.", "response": "Your progress report has been saved successfully."}
 
 

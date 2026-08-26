@@ -20,7 +20,7 @@ class AgentState(TypedDict):
     decision: str  # "save_memory" or "answer_question"
     report_segment: Optional[str]
     question_segment: Optional[str]
-    extracted_summary: Optional[str]
+    extracted_chunks: Optional[list[dict[str, Any]]]
     retrieved_docs: Optional[list[dict[str, Any]]]
     store_response: Optional[str]
     answer_response: Optional[str]

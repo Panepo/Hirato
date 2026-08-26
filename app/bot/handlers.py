@@ -313,7 +313,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "intents": [],
         "report_segment": None,
         "question_segment": None,
-        "extracted_summary": None,
+        "extracted_chunks": None,
         "retrieved_docs": None,
         "store_response": None,
         "answer_response": None,
