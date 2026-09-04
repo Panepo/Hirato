@@ -6,14 +6,14 @@ import re
 import time
 from typing import Any
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from app.agent.graph import secretary_graph
 from app.agent.node_config import chat_llm, router_llm
 from app.agent.node_async import (
+    answer_node_async,
     answer_node_astream,
     router_node_async,
     extractor_node_async,
@@ -21,12 +21,17 @@ from app.agent.node_async import (
     retriever_node_async,
 )
 from app.agent.prompts import TITLE_PROMPT
+from app.core.auth import AuthUser, get_current_user, require_site_admin
+from app.core.channel_acl import get_effective_role, require_channel_manage, require_channel_view, require_channel_write
 from app.core.config import settings
 from app.core.indexer import IndexerClient
+from app.memory.auth_store import auth_store
 from app.memory.sessions import sessions_store
 from app.memory.store import vector_store
 
 router = APIRouter(prefix="/api")
+
+_WRITE_ROLES = {"writer", "manager", "admin"}
 
 
 # ---------------------------------------------------------------------------
@@ -63,18 +68,32 @@ class ChatResponse(BaseModel):
     title_updated: bool = False
 
 
+class ChannelSettingsRequest(BaseModel):
+    is_open: bool
+
+
+class RoleAssignmentRequest(BaseModel):
+    user_id: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
 
 @router.get("/channels")
-async def list_channels() -> list[str]:
-    return vector_store.list_channels()
+async def list_channels(user: AuthUser = Depends(get_current_user)) -> list[dict[str, Any]]:
+    result = []
+    for channel_id in vector_store.list_channels():
+        is_open = await auth_store.is_channel_open(channel_id)
+        role = await get_effective_role(channel_id, user)
+        if is_open or role is not None:
+            result.append({"channel_id": channel_id, "is_open": is_open, "role": role})
+    return result
 
 
 @router.post("/channels", status_code=201)
-async def create_channel(body: NewChannelRequest) -> dict[str, str]:
+async def create_channel(body: NewChannelRequest, _: AuthUser = Depends(require_site_admin)) -> dict[str, str]:
     channel_id = re.sub(r"[^a-zA-Z0-9._-]", "_", body.name.strip())
     channel_id = re.sub(r"_+", "_", channel_id).strip("_.-")
     if len(channel_id) < 3:
@@ -82,22 +101,79 @@ async def create_channel(body: NewChannelRequest) -> dict[str, str]:
     if not channel_id:
         raise HTTPException(status_code=400, detail="Channel name cannot be empty.")
     vector_store.get_or_create_collection(channel_id)
+    await auth_store.ensure_channel_settings_row(channel_id)
     return {"channel_id": channel_id, "description": body.description}
 
 
 @router.delete("/channels/{channel_id}", status_code=200)
-async def delete_channel(channel_id: str) -> dict[str, bool]:
+async def delete_channel(channel_id: str, _: AuthUser = Depends(require_site_admin)) -> dict[str, bool]:
     try:
         vector_store.delete_channel(channel_id)
         # Delete all chat sessions belonging to this channel
         await sessions_store.delete_channel_sessions(channel_id)
+        await auth_store.delete_channel_settings(channel_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
 
 
+@router.put("/channels/{channel_id}")
+async def update_channel_settings(
+    channel_id: str, body: ChannelSettingsRequest, _: AuthUser = Depends(require_channel_manage)
+) -> dict[str, Any]:
+    await auth_store.set_channel_open(channel_id, body.is_open)
+    return {"channel_id": channel_id, "is_open": body.is_open}
+
+
+@router.get("/channels/{channel_id}/roles")
+async def list_channel_roles(channel_id: str, _: AuthUser = Depends(require_channel_manage)) -> list[dict[str, Any]]:
+    return await auth_store.list_channel_roles(channel_id)
+
+
+@router.post("/channels/{channel_id}/managers", status_code=201)
+async def add_manager(
+    channel_id: str, body: RoleAssignmentRequest, _: AuthUser = Depends(require_site_admin)
+) -> dict[str, bool]:
+    await auth_store.set_channel_role(channel_id, body.user_id, "manager")
+    return {"ok": True}
+
+
+@router.delete("/channels/{channel_id}/managers/{user_id}", status_code=200)
+async def remove_manager(channel_id: str, user_id: str, _: AuthUser = Depends(require_site_admin)) -> dict[str, bool]:
+    await auth_store.remove_channel_role(channel_id, user_id)
+    return {"ok": True}
+
+
+@router.post("/channels/{channel_id}/writers", status_code=201)
+async def add_writer(
+    channel_id: str, body: RoleAssignmentRequest, _: AuthUser = Depends(require_channel_manage)
+) -> dict[str, bool]:
+    await auth_store.set_channel_role(channel_id, body.user_id, "writer")
+    return {"ok": True}
+
+
+@router.delete("/channels/{channel_id}/writers/{user_id}", status_code=200)
+async def remove_writer(channel_id: str, user_id: str, _: AuthUser = Depends(require_channel_manage)) -> dict[str, bool]:
+    await auth_store.remove_channel_role(channel_id, user_id)
+    return {"ok": True}
+
+
+@router.post("/channels/{channel_id}/viewers", status_code=201)
+async def add_viewer(
+    channel_id: str, body: RoleAssignmentRequest, _: AuthUser = Depends(require_channel_manage)
+) -> dict[str, bool]:
+    await auth_store.set_channel_role(channel_id, body.user_id, "viewer")
+    return {"ok": True}
+
+
+@router.delete("/channels/{channel_id}/viewers/{user_id}", status_code=200)
+async def remove_viewer(channel_id: str, user_id: str, _: AuthUser = Depends(require_channel_manage)) -> dict[str, bool]:
+    await auth_store.remove_channel_role(channel_id, user_id)
+    return {"ok": True}
+
+
 @router.get("/channels/{channel_id}/memories")
-async def list_memories(channel_id: str) -> list[dict]:
+async def list_memories(channel_id: str, _: AuthUser = Depends(require_channel_write)) -> list[dict]:
     try:
         return vector_store.list_memories(channel_id)
     except ValueError as exc:
@@ -105,7 +181,9 @@ async def list_memories(channel_id: str) -> list[dict]:
 
 
 @router.delete("/channels/{channel_id}/memories", status_code=200)
-async def delete_memories(channel_id: str, body: BulkDeleteMemoriesRequest) -> dict[str, int]:
+async def delete_memories(
+    channel_id: str, body: BulkDeleteMemoriesRequest, _: AuthUser = Depends(require_channel_write)
+) -> dict[str, int]:
     try:
         deleted = len([memory_id for memory_id in body.memory_ids if str(memory_id).strip()])
         if deleted == 0:
@@ -117,7 +195,7 @@ async def delete_memories(channel_id: str, body: BulkDeleteMemoriesRequest) -> d
 
 
 @router.delete("/channels/{channel_id}/memories/{memory_id}", status_code=200)
-async def delete_memory(channel_id: str, memory_id: str) -> dict[str, bool]:
+async def delete_memory(channel_id: str, memory_id: str, _: AuthUser = Depends(require_channel_write)) -> dict[str, bool]:
     try:
         vector_store.delete_memory(channel_id, memory_id)
     except ValueError as exc:
@@ -126,7 +204,9 @@ async def delete_memory(channel_id: str, memory_id: str) -> dict[str, bool]:
 
 
 @router.put("/channels/{channel_id}/memories/{memory_id}")
-async def update_memory(channel_id: str, memory_id: str, body: UpdateMemoryRequest) -> dict[str, bool]:
+async def update_memory(
+    channel_id: str, memory_id: str, body: UpdateMemoryRequest, _: AuthUser = Depends(require_channel_write)
+) -> dict[str, bool]:
     try:
         vector_store.update_memory(channel_id, memory_id, body.content)
     except ValueError as exc:
@@ -135,7 +215,9 @@ async def update_memory(channel_id: str, memory_id: str, body: UpdateMemoryReque
 
 
 @router.post("/channels/{channel_id}/memories/import", status_code=200)
-async def import_memories_endpoint(channel_id: str, body: ImportMemoriesRequest) -> dict[str, int]:
+async def import_memories_endpoint(
+    channel_id: str, body: ImportMemoriesRequest, _: AuthUser = Depends(require_channel_write)
+) -> dict[str, int]:
     try:
         result = vector_store.import_memories(channel_id, body.memories)
     except ValueError as exc:
@@ -149,41 +231,49 @@ async def import_memories_endpoint(channel_id: str, body: ImportMemoriesRequest)
 
 
 @router.get("/sessions")
-async def list_sessions(channel_id: str) -> list[dict[str, Any]]:
+async def list_sessions(channel_id: str, user: AuthUser = Depends(get_current_user)) -> list[dict[str, Any]]:
+    await require_channel_view(channel_id, user)
     return await sessions_store.list_sessions(channel_id)
 
 
 @router.post("/sessions", status_code=201)
-async def create_session(body: dict[str, str]) -> dict[str, Any]:
+async def create_session(body: dict[str, str], user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
     channel_id = body.get("channel_id", "").strip()
     if not channel_id:
         raise HTTPException(status_code=400, detail="channel_id is required.")
+    await require_channel_view(channel_id, user)
     return await sessions_store.create_session(channel_id)
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str) -> dict[str, Any]:
+async def get_session(session_id: str, user: AuthUser = Depends(get_current_user)) -> dict[str, Any]:
     session = await sessions_store.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found.")
+    await require_channel_view(session["channel_id"], user)
     return session
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
-async def delete_session(session_id: str) -> None:
+async def delete_session(session_id: str, user: AuthUser = Depends(get_current_user)) -> None:
+    session = await sessions_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    await require_channel_view(session["channel_id"], user)
     deleted = await sessions_store.delete_session(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found.")
 
 
 @router.put("/sessions/{session_id}/title")
-async def rename_session(session_id: str, body: dict[str, str]) -> dict[str, str]:
+async def rename_session(session_id: str, body: dict[str, str], user: AuthUser = Depends(get_current_user)) -> dict[str, str]:
     title = body.get("title", "").strip()
     if not title:
         raise HTTPException(status_code=400, detail="title is required.")
     session = await sessions_store.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found.")
+    await require_channel_view(session["channel_id"], user)
     await sessions_store.update_title(session_id, title)
     return {"session_id": session_id, "title": title}
 
@@ -209,10 +299,14 @@ async def _generate_title(message: str) -> str:
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(body: ChatRequest) -> ChatResponse:
-    # Resolve or create session (channel_id may be empty if not provided)
+async def chat(body: ChatRequest, user: AuthUser = Depends(get_current_user)) -> ChatResponse:
+    if not body.channel_id:
+        raise HTTPException(status_code=400, detail="Please specify channel_id in your request.")
+    await require_channel_view(body.channel_id, user)
+
+    # Resolve or create session
     session_id = body.session_id
-    if body.channel_id and not session_id:
+    if not session_id:
         session = await sessions_store.create_session(body.channel_id)
         session_id = session["id"]
 
@@ -220,7 +314,7 @@ async def chat(body: ChatRequest) -> ChatResponse:
     prior_messages = await sessions_store.get_messages(session_id) if session_id else []
     context_messages = [body.message]
 
-    initial_state = {
+    state: dict = {
         "messages": context_messages,
         "channel_id": body.channel_id,
         "intents": [],
@@ -232,19 +326,25 @@ async def chat(body: ChatRequest) -> ChatResponse:
         "answer_response": None,
         "response": None,
     }
-    final_state = await secretary_graph.ainvoke(initial_state)
 
-    # Validate that we have a channel after resolution
-    resolved_channel_id: str = final_state.get("channel_id", "")
-    if not resolved_channel_id:
-        raise HTTPException(status_code=400, detail="Could not identify a channel. Please specify channel_id in your request.")
+    router_result = await router_node_async(state)
+    state.update(router_result)
 
-    # Create session now if channel was resolved from the message
-    if not session_id:
-        session = await sessions_store.create_session(resolved_channel_id)
-        session_id = session["id"]
+    if state.get("decision") == "save_memory":
+        role = await get_effective_role(body.channel_id, user)
+        if role not in _WRITE_ROLES:
+            raise HTTPException(status_code=403, detail="Write access required to save progress reports.")
+        extractor_result = await extractor_node_async(state)
+        state.update(extractor_result)
+        store_result = await store_node_async(state)
+        state.update(store_result)
+    else:
+        retriever_result = await retriever_node_async(state)
+        state.update(retriever_result)
+        answer_result = await answer_node_async(state)
+        state.update(answer_result)
 
-    agent_response: str = final_state.get("response", "")
+    agent_response: str = state.get("response", "")
 
     # Persist messages
     await sessions_store.add_message(session_id, "user", body.message)
@@ -268,12 +368,16 @@ async def chat(body: ChatRequest) -> ChatResponse:
 # ---------------------------------------------------------------------------
 
 @router.post("/chat/stream")
-async def chat_stream(body: ChatRequest) -> StreamingResponse:
+async def chat_stream(body: ChatRequest, user: AuthUser = Depends(get_current_user)) -> StreamingResponse:
+    if not body.channel_id:
+        raise HTTPException(status_code=400, detail="Please specify channel_id in your request.")
+    await require_channel_view(body.channel_id, user)
+
     gen_start = time.perf_counter()  # start timing from user input, before any preprocessing
 
-    # Resolve or create session (channel_id may be empty if resolved from message)
+    # Resolve or create session
     session_id = body.session_id
-    if body.channel_id and not session_id:
+    if not session_id:
         session = await sessions_store.create_session(body.channel_id)
         session_id = session["id"]
 
@@ -297,13 +401,10 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
     router_result = await router_node_async(state)
     state.update(router_result)
 
-    if not state.get("channel_id"):
-        raise HTTPException(status_code=400, detail="Could not identify a channel. Please specify channel_id in your request.")
-
-    # Create session now if it was resolved from the message
-    if not session_id:
-        session = await sessions_store.create_session(state["channel_id"])
-        session_id = session["id"]
+    if state.get("decision") == "save_memory":
+        role = await get_effective_role(body.channel_id, user)
+        if role not in _WRITE_ROLES:
+            raise HTTPException(status_code=403, detail="Write access required to save progress reports.")
 
     extractor_result = await extractor_node_async(state)
     state.update(extractor_result)
@@ -394,6 +495,7 @@ async def chat_stream(body: ChatRequest) -> StreamingResponse:
 async def import_embedded_json(
     channel_id: str,
     file: UploadFile = File(...),
+    _: AuthUser = Depends(require_channel_write),
 ) -> dict[str, int]:
     if not file.filename or not file.filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Only .json files are accepted.")
@@ -427,6 +529,7 @@ async def import_embedded_json(
 async def import_documents(
     channel_id: str,
     files: list[UploadFile] = File(...),
+    _: AuthUser = Depends(require_channel_write),
 ) -> dict[str, Any]:
     """Upload multiple documents for indexing and save to channel memory."""
     indexer_client = IndexerClient()
@@ -462,9 +565,16 @@ async def import_documents(
             failed_files.append({"file": file.filename, "error": f"Unsupported file type: {file_ext}"})
             continue
 
-        # Create a temporary file to store the uploaded document with the original filename
-        base_filename = os.path.basename(file.filename)
-        tmp_file_path = os.path.join(tempfile.gettempdir(), base_filename)
+        # Create a temporary file to store the uploaded document
+        # Use the full filename to preserve folder structure and avoid collisions
+        # For webkitdirectory uploads, file.filename contains the relative path
+        safe_filename = re.sub(r'[^\w\-_\. ]', '_', file.filename)
+        tmp_file_path = os.path.join(tempfile.gettempdir(), safe_filename)
+
+        # Ensure the directory structure exists in temp dir
+        tmp_dir = os.path.dirname(tmp_file_path)
+        if tmp_dir and tmp_dir != tempfile.gettempdir() and not os.path.exists(tmp_dir):
+            os.makedirs(tmp_dir, exist_ok=True)
 
         # Remove if exists to ensure a clean write
         if os.path.exists(tmp_file_path):
@@ -503,10 +613,11 @@ async def import_documents(
 
 
 @router.delete("/channels/{channel_id}", status_code=204)
-async def delete_channel_nocontent(channel_id: str) -> None:
+async def delete_channel_nocontent(channel_id: str, _: AuthUser = Depends(require_site_admin)) -> None:
     try:
         vector_store.delete_channel(channel_id)
         # Delete all chat sessions belonging to this channel
         await sessions_store.delete_channel_sessions(channel_id)
+        await auth_store.delete_channel_settings(channel_id)
     except Exception as exc:
         raise HTTPException(status_code=404, detail=f"Channel not found: {exc}") from exc

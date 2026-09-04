@@ -1,14 +1,14 @@
 # Plan: LLM Project Secretary System
 
 ## TL;DR
-Build a multi-project AI secretary using FastAPI + LangGraph + ChromaDB + Ollama. User types weekly progress reports; the agent extracts, embeds, and stores them in ChromaDB (per-project). When the user asks questions, the agent semantically retrieves relevant memories and answers via the local Ollama LLM.
+Build a multi-project AI secretary using FastAPI + LangGraph + ChromaDB + OpenAI-compatible LLMs. User types weekly progress reports; the agent extracts, embeds, and stores them in ChromaDB (per-project). When the user asks questions, the agent semantically retrieves relevant memories and answers via the local OpenAI-compatible LLM.
 
 ---
 
 ## Stack
-- **LLM (extractor + answer)**: Ollama @ `http://10.168.3.58`, model `qwen3.6:35b`, bearer auth
-- **LLM (router)**: `nemotron-3-nano:4b` — fast binary classification only
-- **Embeddings**: Ollama `embeddinggemma:300m` via `OllamaEmbeddings`
+- **LLM (extractor + answer)**: OpenAI-compatible LLM @ `http://10.168.3.58/v1`, model `qwen3.6:35b`, bearer auth
+- **LLM (router)**: `Qwen2.5-7B-Instruct` — fast binary classification only
+- **Embeddings**: OpenAI-compatible embeddings via `bge-m3`
 - **Orchestration**: LangGraph `StateGraph`
 - **Memory**: ChromaDB (local persistent, collection-per-project)
 - **API**: FastAPI
@@ -54,7 +54,9 @@ Add: `chromadb`, `python-dotenv`
 
 ### Step 2 — app/core/config.py
 Load `.env` values:
-- `OLLAMA_CHAT_URL`, `OLLAMA_BEARER`, `CHAT_MODEL`, `CHAT_MODEL_ROUTER`, `CHAT_MODEL_THINK`, `EMBEDDING_MODEL`
+- `CHAT_MODEL`, `CHAT_BASE_URL`, `CHAT_API_KEY`
+- `CHAT_MODEL_ROUTER`, `ROUTER_BASE_URL`, `ROUTER_API_KEY`
+- `EMBEDDING_MODEL`, `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`
 - `CHROMA_PERSIST_PATH = "./chroma_db"`
 
 ### Step 3 — app/memory/store.py
@@ -95,26 +97,16 @@ router_node → [conditional edge]
   "progress_report" → extractor_node → store_node → END
   "question"        → retriever_node → answer_node → END
 ```
-Compile with `graph.compile()` → exported as `secretary_graph`
-
-### Step 7 — Ollama client setup (in config.py or nodes.py)
-Instantiate two separate `ChatOllama` clients from `langchain_ollama`:
+Compile with LLM client setup (in config.py or nodes.py)
+Instantiate `LLMInference` clients from `app.core.llm`:
 ```python
 # Heavy model — extractor_node + answer_node
-chat_llm = ChatOllama(
-    base_url=settings.OLLAMA_CHAT_URL,
-    model=settings.CHAT_MODEL,          # qwen3.6:35b
-    client_kwargs={"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}}
-)
+chat_llm = LLMInference()
 
 # Fast model — router_node only
-router_llm = ChatOllama(
-    base_url=settings.OLLAMA_CHAT_URL,
-    model=settings.CHAT_MODEL_ROUTER,   # nemotron-3-nano:4b
-    client_kwargs={"headers": {"Authorization": f"Bearer {settings.OLLAMA_BEARER}"}}
-)
+router_llm = LLMInference(temperature=0.3)
 ```
-Use `OllamaEmbeddings` similarly for the embedding model.
+Use `EmbeddingInference` from `app.core.embedding` for the embedding model.
 
 ---
 
@@ -159,14 +151,14 @@ Single-page UI:
 - **One ChromaDB collection per project** — clean isolation, easy to list projects
 - **Store both raw + extracted summary** — raw for context richness, summary for clean retrieval
 - **Temporal consistency via date metadata + recency sort** — every stored doc carries an ISO `date`; `search_memory` sorts results newest-first; `ANSWER_PROMPT` instructs the LLM to trust the most recent entry when facts conflict. This ensures `A → b` (this week) wins over `A → a` (last week) without any graph or upsert complexity.
-- **Pre-embedded JSON import (bypass re-embedding)** — the `.embedded.json` format stores `chunk_text_embedded` (pre-formatted text with document/section context) and `chunk_id`. `import_chunks` uses `chunk_text_embedded` as the document and `chunk_id` as the ChromaDB ID. ChromaDB re-embeds via `OllamaEmbeddings` on upsert; the `embedded` suffix in the filename refers to the text formatting, not pre-computed vectors — so the same embedding model is used for consistency with progress reports.
+- **Pre-embedded JSON import (bypass re-embedding)** — the `.embedded.json` format stores `chunk_text_embedded` (pre-formatted text with document/section context) and `chunk_id`. `import_chunks` uses `chunk_text_embedded` as the document and `chunk_id` as the ChromaDB ID. ChromaDB re-embeds via `EmbeddingInference` on upsert; the `embedded` suffix in the filename refers to the text formatting, not pre-computed vectors — so the same embedding model is used for consistency with progress reports.
 - **Reference docs rank below progress reports** — imported chunks receive `date = "1970-01-01"`; `search_memory` sorts newest-first, so weekly reports (current year dates) always surface above static reference material. The `ANSWER_PROMPT` "trust newest" rule reinforces this.
 - **Import is idempotent** — using `chunk_id` as the ChromaDB document ID means re-uploading the same file upserts without duplication.
 - **No auth/login on the web UI** — out of scope for now
 - **Conversation history**: single-turn per API call (no multi-turn memory in LangGraph state for now); can be added later
 - **No streaming** for now (simpler); can add SSE streaming later
-
+EmbeddingInference
 ## Further Considerations
-1. **Ollama bearer token in `client_kwargs`**: `langchain_ollama.ChatOllama` passes `client_kwargs` to the underlying `httpx` client — needs verification at runtime; fallback is a custom `BaseChatModel` wrapping `requests`.
-2. **`CHAT_MODEL_THINK=true`**: Applied to `chat_llm` (qwen3.6:35b) only — thinking mode is valuable on the 35B model. The router LLM (`nemotron-3-nano:4b`) should NOT use thinking mode to keep latency low.
+1. **OpenAI-compatible API keys in configuration**: The `LLMInference` and `EmbeddingInference` classes use `base_url` and `api_key` parameters — verified at runtime.
+2. **`CHAT_MODEL_THINK=true`**: Applied to `chat_llm` (qwen3.6:35b) only — thinking mode is valuable on the 35B model. The router LLM (`Qwen2.5-7B-Instruct`) should NOT use thinking mode to keep latency low.
 3. **Dual-model rationale**: `router_node` fires on every message (simple binary classification — fast model is fine). `extractor_node` and `answer_node` require reliable structured output and context synthesis — the 35B model handles these.

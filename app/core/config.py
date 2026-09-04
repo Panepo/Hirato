@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ACCESS_CODE: str = ""
 
+    SHIRATSUYU_BASE_URL: str = ""
+    SHIRATSUYU_SERVER_NAME: str = "hirato"
+    JWT_SECRET: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    SITE_ADMIN_ROLE_ID: int = 52  # placeholder until Shiratsuyu confirms the real HIRATO_MASTER id
+    AUTH_DB_PATH: str = "./auth.db"
 
 
 settings = Settings()

@@ -1,19 +1,25 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
+from app.api.auth_routes import router as auth_router
 from app.api.routes import router
 from app.bot.bot import build_application, start_bot, stop_bot
 from app.bot.telegram_sessions import telegram_session_manager
 from app.core.config import settings
+from app.memory.auth_store import auth_store
 from app.memory.sessions import sessions_store
+
+FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await sessions_store.init_db()
+    await auth_store.init_db()
     await telegram_session_manager.initialize()
 
     telegram_app = None
@@ -37,8 +43,16 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(auth_router)
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_frontend(full_path: str) -> FileResponse:
+    """SPA fallback: serve a built frontend asset if it exists, else index.html for client-side routing."""
+    candidate = (FRONTEND_DIST / full_path).resolve()
+    if full_path and candidate.is_file() and FRONTEND_DIST.resolve() in candidate.parents:
+        return FileResponse(candidate)
+    return FileResponse(FRONTEND_DIST / "index.html")
 
 if __name__ == "__main__":
     import uvicorn

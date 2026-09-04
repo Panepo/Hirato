@@ -12,15 +12,22 @@ from telegram.ext import (
     filters,
 )
 
-from app.agent.graph import secretary_graph
+from app.agent.node_async import answer_node_async, retriever_node_async, router_node_async
 from app.agent.prompts import TITLE_PROMPT
 from app.bot.auth import require_auth
 from app.bot.telegram_sessions import telegram_session_manager
 from app.core.config import settings
+from app.memory.auth_store import auth_store
 from app.memory.sessions import sessions_store
 from app.memory.store import vector_store
 from langchain_core.messages import HumanMessage, SystemMessage
 from app.agent.nodes import chat_llm
+
+
+async def _list_open_channels() -> list[str]:
+    """Telegram may only browse/select open channels — closed channels are web-app-only."""
+    closed = await auth_store.list_closed_channel_ids()
+    return [c for c in vector_store.list_channels() if c not in closed]
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +48,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
-    projects = vector_store.list_channels()
+    projects = await _list_open_channels()
     if not projects:
         await update.effective_message.reply_text(  # type: ignore[union-attr]
             "✅ You are authenticated.\n"
@@ -101,30 +108,7 @@ async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     chat_id: int = update.effective_chat.id  # type: ignore[union-attr]
     args = context.args or []
 
-    all_channels = vector_store.list_channels()
-
-    # /channel new <name> — create a new channel
-    if args and args[0].lower() == "new":
-        name = " ".join(args[1:]).strip()
-        if not name:
-            await update.effective_message.reply_text(  # type: ignore[union-attr]
-                "Usage: /channel new <name>"
-            )
-            return
-        import re
-        channel_id = re.sub(r"[^a-zA-Z0-9._-]", "_", name)
-        channel_id = re.sub(r"_+", "_", channel_id).strip("_.-")
-        if len(channel_id) < 3:
-            await update.effective_message.reply_text(  # type: ignore[union-attr]
-                "❌ Channel name too short (min 3 alphanumeric characters)."
-            )
-            return
-        vector_store.get_or_create_collection(channel_id)
-        await update.effective_message.reply_text(  # type: ignore[union-attr]
-            f"✅ Channel *{channel_id}* created.",
-            parse_mode="Markdown",
-        )
-        return
+    all_channels = await _list_open_channels()
 
     # /channel <name> — fuzzy-select a channel
     if args:
@@ -156,7 +140,7 @@ async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # /channel (no args) — show inline keyboard
     if not all_channels:
         await update.effective_message.reply_text(  # type: ignore[union-attr]
-            "No channels exist yet. Use /channel new <name> to create one."
+            "No channels exist yet. Use the web app to create one."
         )
         return
 
@@ -307,7 +291,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Show typing indicator
     await update.effective_chat.send_action(ChatAction.TYPING)  # type: ignore[union-attr]
 
-    agent_state = {
+    agent_state: dict = {
         "messages": context_messages,
         "channel_id": channel_id,
         "intents": [],
@@ -320,8 +304,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "response": None,
     }
 
-    final_state = await secretary_graph.ainvoke(agent_state)
-    agent_response: str = final_state.get("response", "")
+    router_result = await router_node_async(agent_state)
+    agent_state.update(router_result)
+
+    # Telegram is read-only everywhere: never runs extractor_node/store_node.
+    if agent_state.get("decision") != "answer_question":
+        agent_response = (
+            "Progress report logging isn't available via Telegram \u2014 please use the web app."
+        )
+    else:
+        retriever_result = await retriever_node_async(agent_state)
+        agent_state.update(retriever_result)
+        answer_result = await answer_node_async(agent_state)
+        agent_state.update(answer_result)
+        agent_response = agent_state.get("response", "")
 
     # Persist messages
     await sessions_store.add_message(session_id, "user", user_text)

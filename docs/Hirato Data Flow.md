@@ -136,13 +136,17 @@ END
 
 ```
 retriever_node
-  ├── Calls: vector_store.search_memory(channel_id, query, n_results=5)
+  ├── Calls: vector_store.build_bm25_index(channel_id)
+  ├── Calls: retrieve_hybrid(channel_id, query, bm25_index)
   │          ├── query = state["question_segment"]  (isolated question text)
-  │          ├── OpenAI-compatible embeddings.embed_documents([query])  (embedding model)
-  │          ├── LanceDB table.search() — cosine similarity vector search
-  │          └── Results sorted by metadata["date"] descending (newest first)
+  │          ├── Dense vector search: vector_store.search_memory(channel_id, query, n_results=VECTOR_SEARCH_TOP_K)
+  │          ├── BM25 keyword search: vector_store.search_memory_bm25(channel_id, query, n_results=BM25_SEARCH_TOP_K, bm25_index)
+  │          ├── Reciprocal Rank Fusion (RRF): merges vector and BM25 results
+  │          └── Reranking: _rerank_docs(query, docs, bm25_index)
+  │                     ├── Cross-encoder reranker model evaluates relevance scores
+  │                     └── Score blending: Final_Score = reranker_weight*ScoreReranker + bm25_weight*ScoreBM25
   └── Writes: state["retrieved_docs"]
-              list of { content, metadata: { date, type }, distance }
+              list of { content, metadata: { date, type, source, section, bm25_score, final_score, relevance_score } }
   │
   ▼
 answer_node
