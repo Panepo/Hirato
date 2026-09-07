@@ -34,6 +34,22 @@ async def shiratsuyu_login(email: str, password: str) -> dict:
     return resp.json()
 
 
+async def shiratsuyu_query_user(identifier: str, authorization: str) -> list[dict]:
+    """GET /user/query/:identifier from Shiratsuyu, forwarding the caller's bearer token."""
+    async with httpx.AsyncClient(base_url=settings.SHIRATSUYU_BASE_URL, timeout=settings.SERVER_TIMEOUT) as client:
+        try:
+            resp = await client.get(f"/user/query/{identifier}", headers={"Authorization": authorization})
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Shiratsuyu query unreachable: {exc}") from exc
+
+    if resp.status_code == 400:
+        raise HTTPException(status_code=400, detail="identifier is required")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Shiratsuyu query failed: {resp.status_code}")
+
+    return resp.json()
+
+
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])

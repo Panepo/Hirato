@@ -6,7 +6,7 @@ import re
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
@@ -21,7 +21,7 @@ from app.agent.node_async import (
     retriever_node_async,
 )
 from app.agent.prompts import TITLE_PROMPT
-from app.core.auth import AuthUser, get_current_user, require_site_admin
+from app.core.auth import AuthUser, get_current_user, require_site_admin, shiratsuyu_query_user
 from app.core.channel_acl import get_effective_role, require_channel_manage, require_channel_view, require_channel_write
 from app.core.config import settings
 from app.core.indexer import IndexerClient
@@ -84,6 +84,15 @@ class RoleAssignmentRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+
+@router.get("/user/query/{identifier}")
+async def query_user(
+    identifier: str,
+    authorization: str = Header(...),
+    _: AuthUser = Depends(get_current_user),
+) -> list[dict]:
+    return await shiratsuyu_query_user(identifier, authorization)
 
 
 @router.get("/channels")
