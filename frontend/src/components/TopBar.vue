@@ -46,6 +46,7 @@ function logout() {
         Admin
       </RouterLink>
     </template>
+    <span v-if="channelId" class="topbar-channel-name">{{ channelId }}</span>
     <span class="spacer"></span>
     <ImportDocumentsPanel
       v-if="channelId && canWrite(channel)"

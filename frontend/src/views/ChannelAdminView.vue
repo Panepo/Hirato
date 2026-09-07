@@ -73,7 +73,7 @@ async function removeRole(row: RoleRow) {
 
 <template>
   <div class="channel-admin-page">
-    <h2>Channel Admin - {{ channelId }}</h2>
+    <h2>Channel Admin</h2>
 
     <section>
       <h3>Visibility</h3>

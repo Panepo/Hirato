@@ -35,11 +35,11 @@ async def shiratsuyu_login(email: str, password: str) -> dict:
     return resp.json()
 
 
-async def shiratsuyu_query_user(identifier: str, authorization: str) -> list[dict]:
-    """GET /user/query/:identifier from Shiratsuyu, forwarding the caller's bearer token."""
+async def shiratsuyu_query_user(identifier: str) -> list[dict]:
+    """GET /user/query/:identifier from Shiratsuyu using the configured SHIRATSUYU_TOKEN."""
     async with httpx.AsyncClient(base_url=settings.SHIRATSUYU_BASE_URL, timeout=settings.SERVER_TIMEOUT) as client:
         try:
-            resp = await client.get(f"/user/query/{identifier}", headers={"Authorization": authorization})
+            resp = await client.get(f"/user/query/{identifier}", headers={"Authorization": f"Bearer {settings.SHIRATSUYU_TOKEN}"})
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Shiratsuyu query unreachable: {exc}") from exc
 

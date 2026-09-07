@@ -93,7 +93,7 @@ async def query_user(
     authorization: str = Header(...),
     _: AuthUser = Depends(get_current_user),
 ) -> list[dict]:
-    return await shiratsuyu_query_user(identifier, authorization)
+    return await shiratsuyu_query_user(identifier)
 
 
 @router.get("/channels")

@@ -39,6 +39,7 @@ button {
 
 /* ---- Top bar ---- */
 #topbar {
+  position: relative;
   background: #1e293b;
   color: #f8fafc;
   padding: 0.75rem 1.25rem;
@@ -57,6 +58,18 @@ button {
 
 #topbar .spacer {
   flex: 1;
+}
+
+.topbar-channel-name {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f8fafc;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .topbar-link {

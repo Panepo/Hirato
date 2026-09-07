@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     SHIRATSUYU_BASE_URL: str = ""
     SHIRATSUYU_SERVER_NAME: str = "hirato"
+    SHIRATSUYU_TOKEN: str = ""
     JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     SITE_ADMIN_ROLE_ID: int = 52  # placeholder until Shiratsuyu confirms the real HIRATO_MASTER id
