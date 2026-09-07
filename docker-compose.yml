@@ -5,6 +5,8 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: /hirato/
     restart: unless-stopped
     depends_on:
       - fukae
@@ -21,6 +23,7 @@ services:
       # Authentication configuration (new for auth update)
       - SHIRATSUYU_BASE_URL=${SHIRATSUYU_BASE_URL}
       - SHIRATSUYU_SERVER_NAME=${SHIRATSUYU_SERVER_NAME}
+      - SHIRATSUYU_TOKEN=${SHIRATSUYU_TOKEN}
       - JWT_SECRET=${JWT_SECRET}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - SITE_ADMIN_ROLE_ID=${SITE_ADMIN_ROLE_ID}

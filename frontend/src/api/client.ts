@@ -1,4 +1,5 @@
-const API_BASE = '/api'
+// import.meta.env.BASE_URL always has a trailing slash (e.g. '/' or '/hirato/')
+const API_BASE = `${import.meta.env.BASE_URL}api`.replace(/\/{2,}/g, '/')
 
 export class ApiError extends Error {
   status: number
