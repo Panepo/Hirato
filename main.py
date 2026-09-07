@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.memory.auth_store import auth_store
 from app.memory.sessions import sessions_store
 
-FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
+FRONTEND_DIST = Path(__file__).parent / "static"
 
 
 @asynccontextmanager

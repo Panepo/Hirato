@@ -12,9 +12,19 @@ services:
       - ./hirato-lancedb:/app/lancedb_db
       - ./hirato-data:/app/data
     environment:
+      # Server configuration
       - PORT=${PORT}
+      - SERVER_TIMEOUT=${SERVER_TIMEOUT}
+      # Telegram bot configuration
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ACCESS_CODE=${TELEGRAM_ACCESS_CODE}
+      # Authentication configuration (new for auth update)
+      - SHIRATSUYU_BASE_URL=${SHIRATSUYU_BASE_URL}
+      - SHIRATSUYU_SERVER_NAME=${SHIRATSUYU_SERVER_NAME}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - SITE_ADMIN_ROLE_ID=${SITE_ADMIN_ROLE_ID}
+      # LLM model configuration
       - CHAT_MODEL=${CHAT_MODEL}
       - CHAT_BASE_URL=${CHAT_BASE_URL}
       - CHAT_API_KEY=${CHAT_API_KEY}
@@ -32,13 +42,13 @@ services:
       - RERANKING_API_KEY=${RERANKING_API_KEY}
       - INDEXER_BASE_URL=${INDEXER_BASE_URL}
       - INDEXER_API_KEY=${INDEXER_API_KEY}
-      - SERVER_TIMEOUT=${SERVER_TIMEOUT}
+      # Processing configuration
       - CHUNK_SIZE=${CHUNK_SIZE}
       - CHUNK_OVERLAP=${CHUNK_OVERLAP}
       - VLM_TEMPERATURE=${VLM_TEMPERATURE}
       - VLM_MAX_TOKENS=${VLM_MAX_TOKENS}
+      # Database paths
       - LANCEDB_PERSIST_PATH=/app/lancedb_db
       - SESSIONS_DB_PATH=/app/data/sessions.db
     extra_hosts:
       - host.docker.internal:host-gateway
-
