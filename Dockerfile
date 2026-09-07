@@ -17,9 +17,8 @@ RUN apt-get update && apt-get install -y nodejs npm && rm -rf /var/lib/apt/lists
 COPY main.py ./
 COPY app/ ./app/
 COPY frontend/ ./frontend/
-COPY static/ ./static/
 
-# Build Vue frontend
+# Build Vue frontend (outputs to ./static via vite outDir)
 RUN cd frontend && npm install && npm run build
 
 # Persistent storage volumes
