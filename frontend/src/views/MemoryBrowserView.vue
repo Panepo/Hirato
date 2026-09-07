@@ -152,7 +152,7 @@ const allChecked = computed(
           Delete Selected ({{ selected.size }})
         </button>
       </div>
-      <div v-if="loading" id="memory-loading">Loading\u2026</div>
+      <div v-if="loading" id="memory-loading">Loading...</div>
       <div v-else-if="error" id="memory-empty">{{ error }}</div>
       <div v-else-if="items.length === 0" id="memory-empty">
         No memories stored for this channel.

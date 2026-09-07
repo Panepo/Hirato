@@ -78,7 +78,7 @@ async function createChannel() {
         <h2>New Channel</h2>
         <input
           v-model="newName"
-          placeholder="Channel name\u2026"
+          placeholder="Channel name"
           @keydown.enter="createChannel"
         />
         <p v-if="error" class="error">{{ error }}</p>

@@ -46,7 +46,7 @@ async function onSubmit() {
       </label>
       <p v-if="error" class="error">{{ error }}</p>
       <button type="submit" :disabled="loading">
-        {{ loading ? "Signing in\u2026" : "Sign in" }}
+        {{ loading ? "Signing in..." : "Sign in" }}
       </button>
     </form>
   </div>

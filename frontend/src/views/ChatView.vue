@@ -101,7 +101,7 @@ watch(
         <textarea
           v-model="input"
           rows="1"
-          placeholder="Type a progress report or ask a question\u2026"
+          placeholder="Type a progress report or ask a question..."
           @keydown.enter.exact.prevent="onSend"
         ></textarea>
         <button id="btn-send" :disabled="sending" @click="onSend">Send</button>

@@ -310,7 +310,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     # Telegram is read-only everywhere: never runs extractor_node/store_node.
     if agent_state.get("decision") != "answer_question":
         agent_response = (
-            "Progress report logging isn't available via Telegram \u2014 please use the web app."
+            "Progress report logging isn't available via Telegram - please use the web app."
         )
     else:
         retriever_result = await retriever_node_async(agent_state)

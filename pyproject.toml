@@ -25,6 +25,8 @@ dependencies = [
 
 [tool.poe.tasks]
 dev = "uvicorn main:app --port 7950 --reload"
+frontend-build = "powershell -Command 'cd frontend; npm run build'"
+frontend-dev = "powershell -Command 'cd frontend; npm run dev'"
 
 [dependency-groups]
 dev = [

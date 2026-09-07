@@ -72,7 +72,7 @@ async function removeRole(row: RoleRow) {
 
 <template>
   <div class="channel-admin-page">
-    <h2>Channel Admin \u2014 {{ channelId }}</h2>
+    <h2>Channel Admin - {{ channelId }}</h2>
 
     <section>
       <h3>Visibility</h3>
@@ -85,7 +85,7 @@ async function removeRole(row: RoleRow) {
     <section v-if="auth.isSiteAdmin">
       <h3>Managers</h3>
       <div class="role-add-row">
-        <input v-model="newManagerId" placeholder="User ID\u2026" />
+        <input v-model="newManagerId" placeholder="User ID" />
         <button @click="addManager">Add manager</button>
       </div>
     </section>
@@ -93,7 +93,7 @@ async function removeRole(row: RoleRow) {
     <section>
       <h3>Writers / Viewers</h3>
       <div class="role-add-row">
-        <input v-model="newUserId" placeholder="User ID\u2026" />
+        <input v-model="newUserId" placeholder="User ID" />
         <select v-model="newRole">
           <option value="viewer">viewer</option>
           <option value="writer">writer</option>

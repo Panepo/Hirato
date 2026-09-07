@@ -34,7 +34,7 @@ export function useChatStream() {
     messages.value.push({ role: 'user', content: text })
     const assistantMsg: ChatMessage = { role: 'assistant', content: '' }
     messages.value.push(assistantMsg)
-    metricsText.value = 'Generating\u2026'
+    metricsText.value = 'Generating...'
     sending.value = true
 
     try {
