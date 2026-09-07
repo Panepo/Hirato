@@ -24,7 +24,7 @@ function logout() {
 <template>
   <div id="topbar">
     <h1>Hirato LLM Secretary</h1>
-    <RouterLink class="topbar-link" to="/">Channels</RouterLink>
+    <RouterLink class="topbar-link" to="/channels/">Channels</RouterLink>
     <template v-if="channelId">
       <RouterLink
         class="topbar-link"

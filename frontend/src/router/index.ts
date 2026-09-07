@@ -7,7 +7,7 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
-    { path: '/', name: 'channels', component: () => import('../views/ChannelListView.vue') },
+    { path: '/channels/', name: 'channels', component: () => import('../views/ChannelListView.vue') },
     {
       path: '/channels/:channelId/chat',
       name: 'chat',

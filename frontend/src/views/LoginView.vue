@@ -17,7 +17,7 @@ async function onSubmit() {
   loading.value = true;
   try {
     await auth.login(email.value, password.value);
-    const redirect = (route.query.redirect as string) || "/";
+    const redirect = (route.query.redirect as string) || "/channels/";
     router.push(redirect);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Login failed";
@@ -51,3 +51,4 @@ async function onSubmit() {
     </form>
   </div>
 </template>
+    const redirect = (route.query.redirect as string) || "/channels/";
