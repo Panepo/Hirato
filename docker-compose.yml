@@ -6,7 +6,7 @@ services:
       context: ..
       dockerfile: Dockerfile
       args:
-        VITE_BASE_PATH: /hirato/
+        ROOT_PATH: /hirato
     restart: unless-stopped
     depends_on:
       - fukae
@@ -16,17 +16,18 @@ services:
     environment:
       # Server configuration
       - PORT=${PORT}
+      - ROOT_PATH=/hirato
       - SERVER_TIMEOUT=${SERVER_TIMEOUT}
       # Telegram bot configuration
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_ACCESS_CODE=${TELEGRAM_ACCESS_CODE}
       # Authentication configuration (new for auth update)
       - SHIRATSUYU_BASE_URL=${SHIRATSUYU_BASE_URL}
-      - SHIRATSUYU_SERVER_NAME=${SHIRATSUYU_SERVER_NAME}
+      - SHIRATSUYU_SERVER_NAME=hirato
       - SHIRATSUYU_TOKEN=${SHIRATSUYU_TOKEN}
       - JWT_SECRET=${JWT_SECRET}
-      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - SITE_ADMIN_ROLE_ID=${SITE_ADMIN_ROLE_ID}
+      - JWT_ALGORITHM=HS256
+      - SITE_ADMIN_ROLE_ID=52
       # LLM model configuration
       - CHAT_MODEL=${CHAT_MODEL}
       - CHAT_BASE_URL=${CHAT_BASE_URL}

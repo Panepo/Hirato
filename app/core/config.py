@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     SESSIONS_DB_PATH: str = "./sessions.db"
 
     PORT: int = 7950
+    # ASGI root_path when served behind a reverse-proxy subpath, e.g. "/hirato"
+    ROOT_PATH: str = ""
 
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ACCESS_CODE: str = ""

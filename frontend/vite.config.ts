@@ -1,11 +1,12 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 
+// Shared with the backend's ROOT_PATH (ASGI root_path) for reverse-proxy subpath deployments.
+const rootPath = (process.env.ROOT_PATH || '').replace(/\/+$/, '')
+
 // https://vite.dev/config/
 export default defineConfig({
-  // Allows deployments behind a reverse-proxy subpath (e.g. https://host/hirato/)
-  // by setting VITE_BASE_PATH at build time. Defaults to root for local/standalone use.
-  base: process.env.VITE_BASE_PATH || '/',
+  base: rootPath ? `${rootPath}/` : '/',
   plugins: [vue()],
   server: {
     proxy: {

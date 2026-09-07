@@ -72,6 +72,9 @@ Create a `.env` file in the project root:
 
 ```env
 PORT=7950
+# ASGI root_path when served behind a reverse-proxy subpath, e.g. /hirato
+# (also used at frontend build time as the Vite base path)
+ROOT_PATH=''
 
 # LLM
 CHAT_MODEL=''

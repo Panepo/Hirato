@@ -73,7 +73,7 @@ async function removeRole(row: RoleRow) {
 
 <template>
   <div class="channel-admin-page">
-    <h2>Channel Admin</h2>
+    <h2>Channel Management</h2>
 
     <section>
       <h3>Visibility</h3>
@@ -84,28 +84,16 @@ async function removeRole(row: RoleRow) {
     </section>
 
     <section v-if="auth.isSiteAdmin">
-      <h3>Add Managers</h3>
+      <h3>Add Member</h3>
       <div class="role-add-row">
         <button class="query-btn" @click="openUserQueryModal('manager')">
-          Query User
+          Add Manager
         </button>
-      </div>
-    </section>
-
-    <section>
-      <h3>Add Writers</h3>
-      <div class="role-add-row">
         <button class="query-btn" @click="openUserQueryModal('writer')">
-          Query User
+          Add Writer
         </button>
-      </div>
-    </section>
-
-    <section>
-      <h3>Add Viewers</h3>
-      <div class="role-add-row">
         <button class="query-btn" @click="openUserQueryModal('viewer')">
-          Query User
+          Add Viewer
         </button>
       </div>
     </section>

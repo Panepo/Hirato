@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
         await stop_bot(telegram_app)
 
 
-app = FastAPI(title="Hirato Secretary", lifespan=lifespan)
+app = FastAPI(title="Hirato Secretary", lifespan=lifespan, root_path=settings.ROOT_PATH)
 
 app.add_middleware(
     CORSMiddleware,
@@ -57,4 +57,4 @@ async def serve_frontend(full_path: str) -> FileResponse:
 if __name__ == "__main__":
     import uvicorn
     from app.core.config import settings
-    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT)
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, root_path=settings.ROOT_PATH)

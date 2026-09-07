@@ -18,9 +18,9 @@ COPY main.py ./
 COPY app/ ./app/
 COPY frontend/ ./frontend/
 
-# Base path the app is served under behind a reverse proxy, e.g. /hirato/ (defaults to /)
-ARG VITE_BASE_PATH=/
-ENV VITE_BASE_PATH=${VITE_BASE_PATH}
+# Path the app is served under behind a reverse proxy, e.g. /hirato (defaults to none)
+ARG ROOT_PATH=""
+ENV ROOT_PATH=${ROOT_PATH}
 
 # Build Vue frontend (outputs to ./static via vite outDir)
 RUN cd frontend && npm install && npm run build
