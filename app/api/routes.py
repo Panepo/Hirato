@@ -79,6 +79,7 @@ class ChannelSettingsRequest(BaseModel):
 
 class RoleAssignmentRequest(BaseModel):
     user_id: str
+    name: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ async def list_channel_roles(channel_id: str, _: AuthUser = Depends(require_chan
 async def add_manager(
     channel_id: str, body: RoleAssignmentRequest, _: AuthUser = Depends(require_site_admin)
 ) -> dict[str, bool]:
-    await auth_store.set_channel_role(channel_id, body.user_id, "manager")
+    await auth_store.set_channel_role(channel_id, body.user_id, "manager", body.name)
     return {"ok": True}
 
 
@@ -162,7 +163,7 @@ async def remove_manager(channel_id: str, user_id: str, _: AuthUser = Depends(re
 async def add_writer(
     channel_id: str, body: RoleAssignmentRequest, _: AuthUser = Depends(require_channel_manage)
 ) -> dict[str, bool]:
-    await auth_store.set_channel_role(channel_id, body.user_id, "writer")
+    await auth_store.set_channel_role(channel_id, body.user_id, "writer", body.name)
     return {"ok": True}
 
 
@@ -176,7 +177,7 @@ async def remove_writer(channel_id: str, user_id: str, _: AuthUser = Depends(req
 async def add_viewer(
     channel_id: str, body: RoleAssignmentRequest, _: AuthUser = Depends(require_channel_manage)
 ) -> dict[str, bool]:
-    await auth_store.set_channel_role(channel_id, body.user_id, "viewer")
+    await auth_store.set_channel_role(channel_id, body.user_id, "viewer", body.name)
     return {"ok": True}
 
 

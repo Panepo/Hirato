@@ -13,13 +13,11 @@ interface RoleRow {
   channel_id: string;
   user_id: string;
   role: string;
+  name: string;
 }
 
 const roles = ref<RoleRow[]>([]);
 const isOpen = ref(true);
-const newUserId = ref("");
-const newRole = ref<"viewer" | "writer">("viewer");
-const newManagerId = ref("");
 const showUserQueryModal = ref(false);
 const queryTarget = ref<"manager" | "writer" | "viewer">("viewer");
 
@@ -38,42 +36,22 @@ async function toggleOpen() {
   isOpen.value = !isOpen.value;
 }
 
-async function addManager() {
-  if (!newManagerId.value.trim()) return;
-  await api.post(`/channels/${encodeURIComponent(props.channelId)}/managers`, {
-    user_id: newManagerId.value.trim(),
-  });
-  newManagerId.value = "";
-  await load();
-}
-
 function openUserQueryModal(target: "manager" | "writer" | "viewer") {
   queryTarget.value = target;
   showUserQueryModal.value = true;
 }
 
-function onUserSelected(userId: string) {
-  if (queryTarget.value === "manager") {
-    newManagerId.value = userId;
-    addManager();
-  } else if (queryTarget.value === "writer") {
-    newUserId.value = userId;
-    newRole.value = "writer";
-    addRole();
-  } else {
-    newUserId.value = userId;
-    newRole.value = "viewer";
-    addRole();
-  }
-}
-
-async function addRole() {
-  if (!newUserId.value.trim()) return;
-  const path = newRole.value === "writer" ? "writers" : "viewers";
+async function onUserSelected(userId: string, name: string) {
+  const path =
+    queryTarget.value === "manager"
+      ? "managers"
+      : queryTarget.value === "writer"
+      ? "writers"
+      : "viewers";
   await api.post(`/channels/${encodeURIComponent(props.channelId)}/${path}`, {
-    user_id: newUserId.value.trim(),
+    user_id: userId,
+    name,
   });
-  newUserId.value = "";
   await load();
 }
 
@@ -106,28 +84,29 @@ async function removeRole(row: RoleRow) {
     </section>
 
     <section v-if="auth.isSiteAdmin">
-      <h3>Managers</h3>
+      <h3>Add Managers</h3>
       <div class="role-add-row">
-        <input v-model="newManagerId" placeholder="User ID" />
         <button class="query-btn" @click="openUserQueryModal('manager')">
           Query User
         </button>
-        <button @click="addManager">Add manager</button>
       </div>
     </section>
 
     <section>
-      <h3>Writers / Viewers</h3>
+      <h3>Add Writers</h3>
       <div class="role-add-row">
-        <input v-model="newUserId" placeholder="User ID" />
         <button class="query-btn" @click="openUserQueryModal('writer')">
           Query User
         </button>
-        <select v-model="newRole">
-          <option value="viewer">viewer</option>
-          <option value="writer">writer</option>
-        </select>
-        <button @click="addRole">Add</button>
+      </div>
+    </section>
+
+    <section>
+      <h3>Add Viewers</h3>
+      <div class="role-add-row">
+        <button class="query-btn" @click="openUserQueryModal('viewer')">
+          Query User
+        </button>
       </div>
     </section>
 
@@ -143,7 +122,7 @@ async function removeRole(row: RoleRow) {
         </thead>
         <tbody>
           <tr v-for="row in roles" :key="row.user_id + row.role">
-            <td>{{ row.user_id }}</td>
+            <td>{{ row.name || row.user_id }}</td>
             <td>{{ row.role }}</td>
             <td>
               <button

@@ -46,10 +46,15 @@ class AuthStore:
                     channel_id TEXT NOT NULL,
                     user_id    TEXT NOT NULL,
                     role       TEXT NOT NULL CHECK (role IN ('viewer','writer','manager')),
+                    name       TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (channel_id, user_id)
                 )
                 """
             )
+            async with db.execute("PRAGMA table_info(channel_roles)") as cursor:
+                columns = {row[1] async for row in cursor}
+            if "name" not in columns:
+                await db.execute("ALTER TABLE channel_roles ADD COLUMN name TEXT NOT NULL DEFAULT ''")
             await db.commit()
 
     # ------------------------------------------------------------------
@@ -150,16 +155,16 @@ class AuthStore:
                 row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def set_channel_role(self, channel_id: str, user_id: str, role: str) -> None:
+    async def set_channel_role(self, channel_id: str, user_id: str, role: str, name: str = "") -> None:
         if role not in _VALID_ROLES:
             raise ValueError(f"invalid role: {role}")
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
                 """
-                INSERT INTO channel_roles(channel_id, user_id, role) VALUES (?,?,?)
-                ON CONFLICT(channel_id, user_id) DO UPDATE SET role=excluded.role
+                INSERT INTO channel_roles(channel_id, user_id, role, name) VALUES (?,?,?,?)
+                ON CONFLICT(channel_id, user_id) DO UPDATE SET role=excluded.role, name=excluded.name
                 """,
-                (channel_id, user_id, role),
+                (channel_id, user_id, role, name),
             )
             await db.commit()
 
@@ -175,7 +180,7 @@ class AuthStore:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT channel_id, user_id, role FROM channel_roles WHERE channel_id=?",
+                "SELECT channel_id, user_id, role, name FROM channel_roles WHERE channel_id=?",
                 (channel_id,),
             ) as cursor:
                 rows = await cursor.fetchall()

@@ -12,7 +12,7 @@ interface Props {
 
 interface Emits {
   (e: "update:modelValue", value: boolean): void;
-  (e: "select", userId: string): void;
+  (e: "select", userId: string, name: string): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -66,8 +66,8 @@ async function searchUsers() {
   }
 }
 
-function onSelectUser(userId: string) {
-  emit("select", userId);
+function onSelectUser(userId: string, name: string) {
+  emit("select", userId, name);
   emit("update:modelValue", false);
 }
 </script>
@@ -114,7 +114,7 @@ function onSelectUser(userId: string) {
               v-for="result in searchResults"
               :key="result.empno"
               class="result-item"
-              @click="onSelectUser(result.empno)"
+              @click="onSelectUser(result.empno, result.name)"
             >
               <div class="result-primary">
                 <span class="empno">{{ result.empno }}</span>
