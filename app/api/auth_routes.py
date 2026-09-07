@@ -24,8 +24,13 @@ async def login(body: LoginRequest) -> dict:
     user_id = str(user_data.get("id") or user_data.get("_id") or user_data.get("sub"))
     name = user_data.get("name", "")
     usergroups = user_data.get("usergroups", [])
+    # Employee number lives at various nesting depths depending on the caller; this is
+    # also what /user/query/{identifier} returns and role assignment stores, so it must
+    # be captured here to let get_effective_role match roles back to the logged-in user.
+    nested_data = user_data.get("data") or {}
+    empno = user_data.get("empno") or nested_data.get("empno") or ""
 
-    await auth_store.upsert_user(user_id, name, usergroups)
+    await auth_store.upsert_user(user_id, name, usergroups, empno)
     return result
 
 

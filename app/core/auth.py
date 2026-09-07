@@ -13,6 +13,7 @@ class AuthUser(BaseModel):
     id: str
     name: str
     usergroups: list[int]
+    empno: str = ""
 
 
 async def shiratsuyu_login(email: str, password: str) -> dict:
@@ -70,7 +71,7 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
     if cached is None:
         raise HTTPException(status_code=401, detail="Unknown user, please log in again")
 
-    return AuthUser(id=cached["id"], name=cached["name"], usergroups=cached["usergroups"])
+    return AuthUser(id=cached["id"], name=cached["name"], usergroups=cached["usergroups"], empno=cached.get("empno", ""))
 
 
 def is_site_admin(user: AuthUser) -> bool:

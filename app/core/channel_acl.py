@@ -13,6 +13,13 @@ _MANAGE_ROLES = {"manager", "admin"}
 async def get_effective_role(channel_id: str, user: AuthUser) -> str | None:
     if is_site_admin(user):
         return "admin"
+    # Role assignment (via the employee-search "query user" flow) stores the target's
+    # empno, not their Shiratsuyu account id, so match on empno first and fall back to
+    # id for safety.
+    if user.empno:
+        role = await auth_store.get_channel_role(channel_id, user.empno)
+        if role is not None:
+            return role
     return await auth_store.get_channel_role(channel_id, user.id)
 
 

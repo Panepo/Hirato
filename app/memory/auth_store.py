@@ -31,6 +31,10 @@ class AuthStore:
                 )
                 """
             )
+            async with db.execute("PRAGMA table_info(users)") as cursor:
+                user_columns = {row[1] async for row in cursor}
+            if "empno" not in user_columns:
+                await db.execute("ALTER TABLE users ADD COLUMN empno TEXT NOT NULL DEFAULT ''")
             await db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS channel_settings (
@@ -61,15 +65,17 @@ class AuthStore:
     # Users
     # ------------------------------------------------------------------
 
-    async def upsert_user(self, user_id: str, name: str, usergroups: list[int]) -> None:
+    async def upsert_user(self, user_id: str, name: str, usergroups: list[int], empno: str = "") -> None:
         now = _now_iso()
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
                 """
-                INSERT INTO users(id, name, usergroups, updated_at) VALUES (?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET name=excluded.name, usergroups=excluded.usergroups, updated_at=excluded.updated_at
+                INSERT INTO users(id, name, usergroups, empno, updated_at) VALUES (?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET name=excluded.name, usergroups=excluded.usergroups,
+                    empno=CASE WHEN excluded.empno != '' THEN excluded.empno ELSE users.empno END,
+                    updated_at=excluded.updated_at
                 """,
-                (user_id, name, json.dumps(usergroups), now),
+                (user_id, name, json.dumps(usergroups), empno, now),
             )
             await db.commit()
 
@@ -77,7 +83,7 @@ class AuthStore:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT id, name, usergroups, updated_at FROM users WHERE id=?", (user_id,)
+                "SELECT id, name, usergroups, empno, updated_at FROM users WHERE id=?", (user_id,)
             ) as cursor:
                 row = await cursor.fetchone()
         if row is None:
