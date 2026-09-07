@@ -68,6 +68,11 @@ class ChatResponse(BaseModel):
     title_updated: bool = False
 
 
+class RegenerateRequest(BaseModel):
+    channel_id: str = ""
+    session_id: str
+
+
 class ChannelSettingsRequest(BaseModel):
     is_open: bool
 
@@ -367,6 +372,77 @@ async def chat(body: ChatRequest, user: AuthUser = Depends(get_current_user)) ->
 # Streaming chat
 # ---------------------------------------------------------------------------
 
+async def _stream_chat_response(
+    frozen_state: dict,
+    frozen_session_id: str,
+    gen_start: float,
+    user_message: str,
+    persist_user_message: bool,
+    is_first_turn: bool,
+):
+    """Stream tokens for an already-routed agent state, then persist and report metrics."""
+    full_response_parts: list[str] = []
+    first_chunk_at: float | None = None
+    last_chunk_at: float | None = None
+
+    yield f"data: {json.dumps({'type': 'session', 'session_id': frozen_session_id})}\n\n"
+
+    # Emit store response (progress report ack) immediately if present
+    store_resp: str | None = frozen_state.get("store_response")
+    if store_resp:
+        now = time.perf_counter()
+        first_chunk_at = now
+        last_chunk_at = now
+        full_response_parts.append(store_resp)
+        yield f"data: {json.dumps({'type': 'token', 'content': store_resp})}\n\n"
+
+    # Stream the answer if the router decided to answer a question
+    if frozen_state.get("decision") == "answer_question":
+        if store_resp:
+            sep = "\n\n"
+            full_response_parts.append(sep)
+            yield f"data: {json.dumps({'type': 'token', 'content': sep})}\n\n"
+
+        async for chunk in answer_node_astream(frozen_state):
+            now = time.perf_counter()
+            if first_chunk_at is None:
+                first_chunk_at = now
+            last_chunk_at = now
+            full_response_parts.append(chunk)
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+    # Always report timing metrics for whatever content was produced above
+    ttfw = round(first_chunk_at - gen_start, 2) if first_chunk_at is not None else 0.0
+    total = round((last_chunk_at or gen_start) - gen_start, 2)
+    gen_duration = round((last_chunk_at - first_chunk_at), 2) if (last_chunk_at and first_chunk_at and last_chunk_at > first_chunk_at) else 0.01
+    word_count = len("".join(full_response_parts).split())
+    wps = round(word_count / gen_duration, 1) if gen_duration > 0 else 0.0
+
+    yield f"data: {json.dumps({'type': 'metrics', 'ttfw': ttfw, 'wps': wps, 'total': total})}\n\n"
+
+    full_response = "".join(full_response_parts) or "No response generated."
+
+    # Persist messages
+    if persist_user_message:
+        await sessions_store.add_message(frozen_session_id, "user", user_message)
+    await sessions_store.add_message(frozen_session_id, "assistant", full_response)
+
+    # Generate title on first turn (best-effort)
+    title_updated = False
+    if is_first_turn:
+        try:
+            title_resp = await asyncio.to_thread(
+                chat_llm.generate_response,
+                messages=[SystemMessage(content=TITLE_PROMPT), HumanMessage(content=user_message)],
+            )
+            await sessions_store.update_title(frozen_session_id, title_resp.strip())
+            title_updated = True
+        except Exception:
+            pass
+
+    yield f"data: {json.dumps({'type': 'done', 'session_id': frozen_session_id, 'title_updated': title_updated})}\n\n"
+
+
 @router.post("/chat/stream")
 async def chat_stream(body: ChatRequest, user: AuthUser = Depends(get_current_user)) -> StreamingResponse:
     if not body.channel_id:
@@ -420,72 +496,82 @@ async def chat_stream(body: ChatRequest, user: AuthUser = Depends(get_current_us
     is_first_turn = not prior_messages
     user_message = body.message
 
-    async def event_generator():
-        full_response_parts: list[str] = []
-        first_chunk_at: float | None = None
-        last_chunk_at: float | None = None
+    return StreamingResponse(
+        _stream_chat_response(
+            frozen_state,
+            frozen_session_id,
+            gen_start,
+            user_message,
+            persist_user_message=True,
+            is_first_turn=is_first_turn,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
-        yield f"data: {json.dumps({'type': 'session', 'session_id': frozen_session_id})}\n\n"
 
-        # Emit store response (progress report ack) immediately if present
-        store_resp: str | None = frozen_state.get("store_response")
-        if store_resp:
-            now = time.perf_counter()
-            first_chunk_at = now
-            last_chunk_at = now
-            full_response_parts.append(store_resp)
-            yield f"data: {json.dumps({'type': 'token', 'content': store_resp})}\n\n"
+@router.post("/chat/regenerate")
+async def chat_regenerate(body: RegenerateRequest, user: AuthUser = Depends(get_current_user)) -> StreamingResponse:
+    if not body.channel_id:
+        raise HTTPException(status_code=400, detail="Please specify channel_id in your request.")
+    await require_channel_view(body.channel_id, user)
 
-        # Stream the answer if the router decided to answer a question
-        if frozen_state.get("decision") == "answer_question":
-            if store_resp:
-                sep = "\n\n"
-                full_response_parts.append(sep)
-                yield f"data: {json.dumps({'type': 'token', 'content': sep})}\n\n"
+    if not body.session_id:
+        raise HTTPException(status_code=400, detail="session_id is required to regenerate a response.")
 
-            answer_chunks: list[str] = []
+    gen_start = time.perf_counter()
 
-            async for chunk in answer_node_astream(frozen_state):
-                now = time.perf_counter()
-                if first_chunk_at is None:
-                    first_chunk_at = now
-                last_chunk_at = now
-                answer_chunks.append(chunk)
-                full_response_parts.append(chunk)
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+    prior_messages = await sessions_store.get_messages(body.session_id)
+    if len(prior_messages) < 2 or prior_messages[-1]["role"] != "assistant" or prior_messages[-2]["role"] != "user":
+        raise HTTPException(status_code=400, detail="Nothing to regenerate for this session.")
 
-        # Always report timing metrics for whatever content was produced above
-        ttfw = round(first_chunk_at - gen_start, 2) if first_chunk_at is not None else 0.0
-        total = round((last_chunk_at or gen_start) - gen_start, 2)
-        gen_duration = round((last_chunk_at - first_chunk_at), 2) if (last_chunk_at and first_chunk_at and last_chunk_at > first_chunk_at) else 0.01
-        word_count = len("".join(full_response_parts).split())
-        wps = round(word_count / gen_duration, 1) if gen_duration > 0 else 0.0
+    user_message: str = prior_messages[-2]["content"]
 
-        yield f"data: {json.dumps({'type': 'metrics', 'ttfw': ttfw, 'wps': wps, 'total': total})}\n\n"
+    # Discard the previous assistant reply; it will be replaced by the regenerated one
+    await sessions_store.delete_last_message(body.session_id)
 
-        full_response = "".join(full_response_parts) or "No response generated."
+    state: dict = {
+        "messages": [user_message],
+        "channel_id": body.channel_id,
+        "intents": [],
+        "report_segment": None,
+        "question_segment": None,
+        "extracted_chunks": None,
+        "retrieved_docs": None,
+        "store_response": None,
+        "answer_response": None,
+        "response": None,
+    }
 
-        # Persist messages
-        await sessions_store.add_message(frozen_session_id, "user", user_message)
-        await sessions_store.add_message(frozen_session_id, "assistant", full_response)
+    router_result = await router_node_async(state)
+    state.update(router_result)
 
-        # Generate title on first turn (best-effort)
-        title_updated = False
-        if is_first_turn:
-            try:
-                title_resp = await asyncio.to_thread(
-                    chat_llm.generate_response,
-                    messages=[SystemMessage(content=TITLE_PROMPT), HumanMessage(content=user_message)],
-                )
-                await sessions_store.update_title(frozen_session_id, title_resp.strip())
-                title_updated = True
-            except Exception:
-                pass
+    if state.get("decision") == "save_memory":
+        role = await get_effective_role(body.channel_id, user)
+        if role not in _WRITE_ROLES:
+            raise HTTPException(status_code=403, detail="Write access required to save progress reports.")
 
-        yield f"data: {json.dumps({'type': 'done', 'session_id': frozen_session_id, 'title_updated': title_updated})}\n\n"
+    extractor_result = await extractor_node_async(state)
+    state.update(extractor_result)
+
+    store_result = await store_node_async(state)
+    state.update(store_result)
+
+    retriever_result = await retriever_node_async(state)
+    state.update(retriever_result)
+
+    frozen_state = dict(state)
+    frozen_session_id = body.session_id
 
     return StreamingResponse(
-        event_generator(),
+        _stream_chat_response(
+            frozen_state,
+            frozen_session_id,
+            gen_start,
+            user_message,
+            persist_user_message=False,
+            is_first_turn=False,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

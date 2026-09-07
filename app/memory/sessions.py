@@ -188,5 +188,19 @@ class SQLiteSessionStore:
                 rows = await cursor.fetchall()
         return [dict(r) for r in rows]
 
+    async def delete_last_message(self, session_id: str) -> None:
+        """Delete the most recently added message in a session (used to discard a reply before regenerating it)."""
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                DELETE FROM messages
+                WHERE id = (
+                    SELECT id FROM messages WHERE session_id=? ORDER BY timestamp DESC LIMIT 1
+                )
+                """,
+                (session_id,),
+            )
+            await db.commit()
+
 
 sessions_store = SQLiteSessionStore()

@@ -238,12 +238,71 @@ button {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
+.bubble-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.35rem;
+}
+
+.btn-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  opacity: 0.65;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.btn-copy:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.bubble.user .btn-copy {
+  color: #e0ebff;
+}
+
+.bubble.user .btn-copy:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.bubble.secretary .btn-copy,
+.bubble.secretary .btn-regenerate {
+  color: #64748b;
+}
+
 .metrics-bar {
   align-self: flex-start;
   font-size: 0.72rem;
   color: #64748b;
   padding: 0 0.25rem;
   font-variant-numeric: tabular-nums;
+}
+
+.btn-regenerate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  opacity: 0.65;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.btn-regenerate:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.06);
 }
 
 /* ---- Input bar ---- */
