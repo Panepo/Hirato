@@ -1,23 +1,27 @@
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 
 // Shared with the backend's ROOT_PATH (ASGI root_path) for reverse-proxy subpath deployments.
-const rootPath = (process.env.ROOT_PATH || '').replace(/\/+$/, '')
+export default defineConfig(({ mode }) => {
+  // Load env variables based on current mode (production, development, etc.)
+  const env = loadEnv(mode, process.cwd(), '')
+  const rootPath = (env.VITE_ROOT_PATH || '').replace(/\/+$/, '/hirato')
 
-// https://vite.dev/config/
-export default defineConfig({
-  base: rootPath ? `${rootPath}/` : '/',
-  plugins: [vue()],
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:7950',
-        changeOrigin: true,
+  return {
+    base: rootPath ? `${rootPath}/` : '/',
+    plugins: [vue()],
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:7950',
+          changeOrigin: true,
+        },
       },
     },
-  },
-  build: {
-    outDir: '../static',
-    emptyOutDir: true,
-  },
+    build: {
+      outDir: '../static',
+      emptyOutDir: true,
+    },
+  }
 })
+

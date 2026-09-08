@@ -17,8 +17,14 @@ async function onSubmit() {
   loading.value = true;
   try {
     await auth.login(email.value, password.value);
-    const redirect = (route.query.redirect as string) || "/channels/";
-    router.push(redirect);
+      const redirect = route.query.redirect as string;
+      if (redirect) {
+        // Use router.push with the redirect path - it will respect the base
+        router.push(redirect);
+      } else {
+        // Use named route to ensure base path is respected
+        router.push({ name: 'channels' });
+      }
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Login failed";
   } finally {
