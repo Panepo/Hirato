@@ -22,8 +22,8 @@ COPY frontend/ ./frontend/
 ARG ROOT_PATH="/hirato"
 ENV ROOT_PATH=${ROOT_PATH}
 
-# Build Vue frontend (outputs to ./static via vite outDir)
-RUN cd frontend && npm install && npm run build
+# Build Vue frontend (outputs to ./static via vite outDir); reuse ROOT_PATH so backend and frontend never diverge
+RUN cd frontend && npm install && VITE_ROOT_PATH=${ROOT_PATH} npm run build
 
 # Persistent storage volumes
 RUN mkdir -p /app/data

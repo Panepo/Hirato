@@ -5,7 +5,7 @@ import { defineConfig, loadEnv } from 'vite'
 export default defineConfig(({ mode }) => {
   // Load env variables based on current mode (production, development, etc.)
   const env = loadEnv(mode, process.cwd(), '')
-  const rootPath = (env.VITE_ROOT_PATH || '').replace(/\/+$/, '/hirato')
+  const rootPath = (env.VITE_ROOT_PATH || '').replace(/\/+$/, '')
 
   return {
     base: rootPath ? `${rootPath}/` : '/',
