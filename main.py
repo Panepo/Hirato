@@ -15,9 +15,9 @@ from app.memory.sessions import sessions_store
 
 FRONTEND_DIST = Path(__file__).parent / "static"
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print(f"INFO:\tServer running at http://127.0.0.1:{settings.PORT}{settings.ROOT_PATH}")
     await sessions_store.init_db()
     await auth_store.init_db()
     await telegram_session_manager.initialize()
@@ -58,3 +58,4 @@ if __name__ == "__main__":
     import uvicorn
     from app.core.config import settings
     uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, root_path=settings.ROOT_PATH)
+

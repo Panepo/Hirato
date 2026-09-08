@@ -19,7 +19,7 @@ COPY app/ ./app/
 COPY frontend/ ./frontend/
 
 # Path the app is served under behind a reverse proxy, e.g. /hirato (defaults to none)
-ARG ROOT_PATH=""
+ARG ROOT_PATH="/hirato"
 ENV ROOT_PATH=${ROOT_PATH}
 
 # Build Vue frontend (outputs to ./static via vite outDir)
