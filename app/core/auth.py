@@ -51,6 +51,25 @@ async def shiratsuyu_query_user(identifier: str) -> list[dict]:
     return resp.json()
 
 
+async def shiratsuyu_get_user_data(user_data_id: str) -> list[dict]:
+    """GET /user/data/ from Shiratsuyu; unlike GET /user/:id, this is where empno actually lives."""
+    async with httpx.AsyncClient(base_url=settings.SHIRATSUYU_BASE_URL, timeout=settings.SERVER_TIMEOUT) as client:
+        try:
+            resp = await client.request(
+                "GET",
+                "/user/data/",
+                headers={"Authorization": f"Bearer {settings.SHIRATSUYU_TOKEN}"},
+                json={"where": {"id": user_data_id}, "select": {"empno": True}},
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Shiratsuyu user data lookup unreachable: {exc}") from exc
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Shiratsuyu user data lookup failed: {resp.status_code}")
+
+    return resp.json()
+
+
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])

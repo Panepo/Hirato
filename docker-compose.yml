@@ -53,6 +53,7 @@ services:
       - VLM_MAX_TOKENS=${VLM_MAX_TOKENS}
       # Database paths
       - LANCEDB_PERSIST_PATH=/app/lancedb_db
+      - AUTH_DB_PATH=/app/data/auth.db
       - SESSIONS_DB_PATH=/app/data/sessions.db
     extra_hosts:
       - host.docker.internal:host-gateway
