@@ -98,6 +98,16 @@ async def run_chat_turn(channel_id: str, session_id: str | None, message: str, u
     return {"response": agent_response, "session_id": session_id, "title_updated": title_updated}
 
 
+async def run_query_turn(channel_id: str, message: str, user: AuthUser) -> dict[str, Any]:
+    """Stateless one-off LLM query in a channel: runs the agent state machine without creating/persisting a session."""
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="Please specify channel_id in your request.")
+    await require_channel_view(channel_id, user)
+
+    state = await _run_state_machine(_new_state(channel_id, message), channel_id, user)
+    return {"response": state.get("response", "")}
+
+
 async def run_regenerate_turn(channel_id: str, session_id: str, user: AuthUser) -> dict[str, Any]:
     """Non-streaming regenerate: discard the last assistant reply and rerun the state machine on the prior user message."""
     if not channel_id:

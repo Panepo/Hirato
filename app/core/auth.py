@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import httpx
 import jwt
 from fastapi import Depends, Header, HTTPException
@@ -52,14 +54,14 @@ async def shiratsuyu_query_user(identifier: str) -> list[dict]:
 
 
 async def shiratsuyu_get_user_data(user_data_id: str) -> list[dict]:
-    """GET /user/data/ from Shiratsuyu; unlike GET /user/:id, this is where empno actually lives."""
+    """GET /user/data/ from Shiratsuyu; unlike GET /user/:id, this is where name/empno actually live."""
     async with httpx.AsyncClient(base_url=settings.SHIRATSUYU_BASE_URL, timeout=settings.SERVER_TIMEOUT) as client:
         try:
             resp = await client.request(
                 "GET",
                 "/user/data/",
                 headers={"Authorization": f"Bearer {settings.SHIRATSUYU_TOKEN}"},
-                json={"where": {"id": user_data_id}, "select": {"empno": True}},
+                json={"where": {"id": user_data_id}, "select": {"name": True, "empno": True}},
             )
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Shiratsuyu user data lookup unreachable: {exc}") from exc
@@ -70,6 +72,86 @@ async def shiratsuyu_get_user_data(user_data_id: str) -> list[dict]:
     return resp.json()
 
 
+async def shiratsuyu_get_user_by_id(user_id: str) -> dict:
+    """GET /user/:id from Shiratsuyu using the configured SHIRATSUYU_TOKEN."""
+    async with httpx.AsyncClient(base_url=settings.SHIRATSUYU_BASE_URL, timeout=settings.SERVER_TIMEOUT) as client:
+        try:
+            resp = await client.get(f"/user/{user_id}", headers={"Authorization": f"Bearer {settings.SHIRATSUYU_TOKEN}"})
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Shiratsuyu user lookup unreachable: {exc}") from exc
+
+    if resp.status_code == 404:
+        raise HTTPException(status_code=401, detail="Unknown Shiratsuyu user") from None
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Shiratsuyu user lookup failed: {resp.status_code}")
+
+    return resp.json()
+
+
+class McpTokenValidation(BaseModel):
+    """Shape of Shiratsuyu's `POST /mcp/validate` response (see MCP-AUTH-INTEGRATION.md)."""
+
+    valid: bool
+    userId: str = ""
+    scopes: list[str] = []
+    expiresAt: str | None = None
+    revoked: bool = False
+
+
+async def shiratsuyu_validate_mcp_token(token: str, required_scopes: list[str] | None = None) -> McpTokenValidation:
+    """POST /mcp/validate to Shiratsuyu to verify an MCP API key issued by Shiratsuyu."""
+    async with httpx.AsyncClient(base_url=settings.SHIRATSUYU_BASE_URL, timeout=settings.SERVER_TIMEOUT) as client:
+        try:
+            resp = await client.post(
+                "/mcp/validate",
+                json={"token": token, "requiredScopes": required_scopes or []},
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Shiratsuyu token validation unreachable: {exc}") from exc
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=401, detail="Invalid or expired API key")
+
+    return McpTokenValidation.model_validate(resp.json())
+
+
+async def resolve_mcp_api_key(api_key: str) -> AuthUser:
+    """Verify an MCP API key against Shiratsuyu and resolve the associated user.
+
+    Every call round-trips to Shiratsuyu's `/mcp/validate` (no local token decoding) so
+    revocation/expiry are always checked live, per MCP-AUTH-INTEGRATION.md. The key itself
+    carries no profile data — only a `userId` — so name/usergroups/empno are looked up (and
+    cached in auth_store, refreshed on every successful validation) via Shiratsuyu's user APIs.
+    """
+    required_scopes = [settings.SHIRATSUYU_SERVER_NAME]
+    validation = await shiratsuyu_validate_mcp_token(api_key, required_scopes)
+
+    if not validation.valid or validation.revoked:
+        raise HTTPException(status_code=401, detail="Invalid or revoked API key")
+    if validation.expiresAt:
+        expires_at = datetime.fromisoformat(validation.expiresAt.replace("Z", "+00:00"))
+        if expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="API key expired")
+    if not all(scope in validation.scopes for scope in required_scopes):
+        raise HTTPException(status_code=403, detail="API key missing required scope")
+    if not validation.userId:
+        raise HTTPException(status_code=401, detail="API key not associated with a user")
+
+    user_record = await shiratsuyu_get_user_by_id(validation.userId)
+    usergroups = user_record.get("usergroups", [])
+    name = user_record.get("email", "")
+    empno = ""
+    user_data_id = user_record.get("userDataId")
+    if user_data_id:
+        records = await shiratsuyu_get_user_data(user_data_id)
+        if records:
+            name = records[0].get("name") or name
+            empno = records[0].get("empno") or ""
+
+    await auth_store.upsert_user(validation.userId, name, usergroups, empno)
+    return AuthUser(id=validation.userId, name=name, usergroups=usergroups, empno=empno)
+
+
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
@@ -77,10 +159,8 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
 
 
-async def get_current_user(authorization: str | None = Header(default=None)) -> AuthUser:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing bearer token")
-    token = authorization.removeprefix("Bearer ").strip()
+async def resolve_bearer_token(token: str) -> AuthUser:
+    """Decode a bearer JWT and look up the cached user — shared by REST and MCP header auth."""
     payload = decode_token(token)
     user_id = payload.get("sub")
     if not user_id:
@@ -91,6 +171,13 @@ async def get_current_user(authorization: str | None = Header(default=None)) -> 
         raise HTTPException(status_code=401, detail="Unknown user, please log in again")
 
     return AuthUser(id=cached["id"], name=cached["name"], usergroups=cached["usergroups"], empno=cached.get("empno", ""))
+
+
+async def get_current_user(authorization: str | None = Header(default=None)) -> AuthUser:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.removeprefix("Bearer ").strip()
+    return await resolve_bearer_token(token)
 
 
 def is_site_admin(user: AuthUser) -> bool:

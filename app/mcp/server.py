@@ -5,11 +5,12 @@ import re
 from typing import Any
 
 from fastapi import HTTPException
+from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
-from app.agent.chat_service import run_chat_turn, run_regenerate_turn
-from app.core.auth import AuthUser, is_site_admin, is_site_manager, perform_login, shiratsuyu_query_user
+from app.agent.chat_service import run_chat_turn, run_query_turn, run_regenerate_turn
+from app.core.auth import AuthUser, is_site_admin, is_site_manager, resolve_mcp_api_key, shiratsuyu_query_user
 from app.core.channel_acl import get_effective_role, require_channel_manage, require_channel_view, require_channel_write
 from app.mcp.session import mcp_sessions
 from app.memory.auth_store import auth_store
@@ -24,10 +25,35 @@ def _session_key(ctx: Context) -> int:
     return id(ctx.session)
 
 
+async def _api_key_auth_middleware(ctx: ServerRequestContext, call_next: CallNext) -> HandlerResult:
+    """Authenticate the connection from a static `X-API-Key` header, when present.
+
+    The key is a Shiratsuyu-issued MCP API token (not a Hirato password) — every request that
+    carries the header is re-verified live against Shiratsuyu's `POST /mcp/validate` (see
+    MCP-AUTH-INTEGRATION.md) so revocation/expiry are always authoritative, instead of trusting a
+    locally-decoded JWT. Lets a client configure the header once (in its MCP server config)
+    instead of calling the `login` tool on every reconnect.
+    """
+    request = ctx.request
+    if request is not None:
+        api_key = request.headers.get("x-api-key", "").strip()
+        if api_key:
+            try:
+                user = await resolve_mcp_api_key(api_key)
+            except HTTPException:
+                pass
+            else:
+                mcp_sessions.login(id(ctx.session), user)
+    return await call_next(ctx)
+
+
+mcp.middleware.append(_api_key_auth_middleware)
+
+
 def _require_user(ctx: Context) -> AuthUser:
     user = mcp_sessions.get(_session_key(ctx))
     if user is None:
-        raise ToolError("Not logged in — call the login tool first.")
+        raise ToolError("Not authenticated — configure the X-API-Key header for this MCP connection.")
     return user
 
 
@@ -64,17 +90,6 @@ async def _require_manage(channel_id: str, user: AuthUser) -> None:
 
 
 @mcp.tool()
-async def login(email: str, password: str, ctx: Context) -> dict:
-    """Log in with Hirato credentials. Must be called before any other tool."""
-    try:
-        _raw, user = await perform_login(email, password)
-    except HTTPException as exc:
-        raise ToolError(_detail(exc)) from exc
-    mcp_sessions.login(_session_key(ctx), user)
-    return {"id": user.id, "name": user.name, "usergroups": user.usergroups}
-
-
-@mcp.tool()
 async def whoami(ctx: Context) -> dict:
     """Return the currently logged-in user's identity and site-level roles."""
     user = _require_user(ctx)
@@ -85,13 +100,6 @@ async def whoami(ctx: Context) -> dict:
         "is_site_admin": is_site_admin(user),
         "is_site_manager": is_site_manager(user),
     }
-
-
-@mcp.tool()
-async def logout(ctx: Context) -> dict:
-    """Forget the logged-in user for this MCP connection."""
-    mcp_sessions.logout(_session_key(ctx))
-    return {"ok": True}
 
 
 @mcp.tool()
@@ -398,6 +406,16 @@ async def chat(message: str, channel_id: str, ctx: Context, session_id: str | No
     user = _require_user(ctx)
     try:
         return await run_chat_turn(channel_id, session_id, message, user)
+    except HTTPException as exc:
+        raise ToolError(_detail(exc)) from exc
+
+
+@mcp.tool()
+async def query(message: str, channel_id: str, ctx: Context) -> dict[str, Any]:
+    """Ask the LLM a one-off question in a channel's context, without creating or persisting a chat session."""
+    user = _require_user(ctx)
+    try:
+        return await run_query_turn(channel_id, message, user)
     except HTTPException as exc:
         raise ToolError(_detail(exc)) from exc
 

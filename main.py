@@ -1,5 +1,6 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 from pathlib import Path
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,10 @@ async def lifespan(app: FastAPI):
     await sessions_store.init_db()
     await auth_store.init_db()
     await telegram_session_manager.initialize()
+
+    # Suppress verbose HTTP request logs from python-telegram-bot
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("telegram.ext").setLevel(logging.WARNING)
 
     telegram_app = None
     if settings.TELEGRAM_BOT_TOKEN:
@@ -66,4 +71,3 @@ if __name__ == "__main__":
     import uvicorn
     from app.core.config import settings
     uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, root_path=settings.ROOT_PATH)
-
