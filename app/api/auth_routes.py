@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.core.auth import AuthUser, get_current_user, is_site_admin, shiratsuyu_get_user_data, shiratsuyu_login
+from app.core.auth import AuthUser, get_current_user, is_site_admin, is_site_manager, shiratsuyu_get_user_data, shiratsuyu_login
 from app.memory.auth_store import auth_store
 
 router = APIRouter(prefix="/api/auth")
@@ -46,4 +46,5 @@ async def me(user: AuthUser = Depends(get_current_user)) -> dict:
         "name": user.name,
         "usergroups": user.usergroups,
         "is_site_admin": is_site_admin(user),
+        "is_site_manager": is_site_manager(user),
     }

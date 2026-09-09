@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     SHIRATSUYU_TOKEN: str = ""
     JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
+    SITE_MANAGER_ROLE_ID: int = 51  # placeholder until Shiratsuyu confirms the real HIRATO_MANAGER id
     SITE_ADMIN_ROLE_ID: int = 52  # placeholder until Shiratsuyu confirms the real HIRATO_MASTER id
     AUTH_DB_PATH: str = "./auth.db"
 

@@ -8,6 +8,7 @@ export interface AuthUser {
   name: string
   usergroups: number[]
   is_site_admin: boolean
+  is_site_manager: boolean
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -16,6 +17,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!token.value)
   const isSiteAdmin = computed(() => !!user.value?.is_site_admin)
+  const isSiteManager = computed(() => !!user.value?.is_site_manager)
 
   function setToken(newToken: string | null) {
     token.value = newToken
@@ -38,5 +40,5 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
   }
 
-  return { token, user, isAuthenticated, isSiteAdmin, login, logout, fetchMe }
+  return { token, user, isAuthenticated, isSiteAdmin, isSiteManager, login, logout, fetchMe }
 })

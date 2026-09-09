@@ -97,7 +97,18 @@ def is_site_admin(user: AuthUser) -> bool:
     return settings.SITE_ADMIN_ROLE_ID in user.usergroups
 
 
+def is_site_manager(user: AuthUser) -> bool:
+    return settings.SITE_MANAGER_ROLE_ID in user.usergroups
+
+
 async def require_site_admin(user: AuthUser = Depends(get_current_user)) -> AuthUser:
     if not is_site_admin(user):
         raise HTTPException(status_code=403, detail="Site admin access required")
+    return user
+
+
+async def require_channel_creator(user: AuthUser = Depends(get_current_user)) -> AuthUser:
+    """Site admins and site managers can create channels; site managers get no other special privileges."""
+    if not is_site_admin(user) and not is_site_manager(user):
+        raise HTTPException(status_code=403, detail="Site admin or site manager access required")
     return user

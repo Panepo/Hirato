@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { useChannelsStore } from "../stores/channels";
@@ -8,6 +9,7 @@ import UserQueryModal from "../components/UserQueryModal.vue";
 const props = defineProps<{ channelId: string }>();
 const auth = useAuthStore();
 const channelsStore = useChannelsStore();
+const router = useRouter();
 
 interface RoleRow {
   channel_id: string;
@@ -69,6 +71,24 @@ async function removeRole(row: RoleRow) {
   );
   await load();
 }
+
+const deleting = ref(false);
+
+async function deleteChannel() {
+  if (
+    !confirm(
+      `Delete channel "${props.channelId}"? This permanently removes its memory, chat sessions, and roles.`
+    )
+  )
+    return;
+  deleting.value = true;
+  try {
+    await channelsStore.deleteChannel(props.channelId);
+    router.push({ name: "channels" });
+  } finally {
+    deleting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -126,6 +146,13 @@ async function removeRole(row: RoleRow) {
     </section>
 
     <UserQueryModal v-model="showUserQueryModal" @select="onUserSelected" />
+
+    <section v-if="auth.isSiteAdmin" class="danger-zone">
+      <h3>Danger Zone</h3>
+      <button class="danger-btn" :disabled="deleting" @click="deleteChannel">
+        Delete Channel
+      </button>
+    </section>
   </div>
 </template>
 
@@ -228,5 +255,16 @@ input[type="checkbox"] {
   width: 18px;
   height: 18px;
   cursor: pointer;
+}
+
+.danger-zone {
+  border: 1px solid #c0392b;
+  border-radius: 4px;
+  padding: 12px 16px;
+}
+
+.danger-btn {
+  background: #c0392b;
+  align-self: flex-start;
 }
 </style>

@@ -40,7 +40,7 @@ async function createChannel() {
   <div class="channel-list-page">
     <div class="channel-list-header">
       <h2>Channels</h2>
-      <button v-if="auth.isSiteAdmin" @click="showModal = true">
+      <button v-if="auth.isSiteAdmin || auth.isSiteManager" @click="showModal = true">
         + New Channel
       </button>
     </div>

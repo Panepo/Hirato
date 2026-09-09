@@ -21,7 +21,7 @@ from app.agent.node_async import (
     retriever_node_async,
 )
 from app.agent.prompts import TITLE_PROMPT
-from app.core.auth import AuthUser, get_current_user, require_site_admin, shiratsuyu_query_user
+from app.core.auth import AuthUser, get_current_user, require_channel_creator, require_site_admin, shiratsuyu_query_user
 from app.core.channel_acl import get_effective_role, require_channel_manage, require_channel_view, require_channel_write
 from app.core.config import settings
 from app.core.indexer import IndexerClient
@@ -108,7 +108,7 @@ async def list_channels(user: AuthUser = Depends(get_current_user)) -> list[dict
 
 
 @router.post("/channels", status_code=201)
-async def create_channel(body: NewChannelRequest, _: AuthUser = Depends(require_site_admin)) -> dict[str, str]:
+async def create_channel(body: NewChannelRequest, _: AuthUser = Depends(require_channel_creator)) -> dict[str, str]:
     channel_id = re.sub(r"[^a-zA-Z0-9._-]", "_", body.name.strip())
     channel_id = re.sub(r"_+", "_", channel_id).strip("_.-")
     if len(channel_id) < 3:
@@ -706,14 +706,3 @@ async def import_documents(
         "skipped": skipped_count,
         "failed_files": failed_files,
     }
-
-
-@router.delete("/channels/{channel_id}", status_code=204)
-async def delete_channel_nocontent(channel_id: str, _: AuthUser = Depends(require_site_admin)) -> None:
-    try:
-        vector_store.delete_channel(channel_id)
-        # Delete all chat sessions belonging to this channel
-        await sessions_store.delete_channel_sessions(channel_id)
-        await auth_store.delete_channel_settings(channel_id)
-    except Exception as exc:
-        raise HTTPException(status_code=404, detail=f"Channel not found: {exc}") from exc
