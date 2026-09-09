@@ -6,6 +6,10 @@
       "headers": {
         "X-API-Key": "shrt_a876dc859fc28c83414b16d734742a20"
       }
+    },
+    "hirato-dev": {
+      "type": "http",
+      "url": "http://127.0.0.1:7950/hirato/mcp/"
     }
   },
   "inputs": [

@@ -11,7 +11,7 @@ from fastapi.responses import Response, StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from app.agent.node_config import chat_llm, router_llm
+from app.agent.node_config import chat_llm
 from app.agent.node_async import (
     answer_node_async,
     answer_node_astream,
@@ -21,13 +21,14 @@ from app.agent.node_async import (
     retriever_node_async,
 )
 from app.agent.prompts import TITLE_PROMPT
+from app.agent.chat_service import run_chat_turn
 from app.core.auth import AuthUser, get_current_user, require_channel_creator, require_site_admin, shiratsuyu_query_user
 from app.core.channel_acl import get_effective_role, require_channel_manage, require_channel_view, require_channel_write
 from app.core.config import settings
-from app.core.indexer import IndexerClient
 from app.memory.auth_store import auth_store
 from app.memory.sessions import sessions_store
 from app.memory.store import vector_store
+from app.services.document_import import import_document_bytes, import_embedded_json_bytes
 
 router = APIRouter(prefix="/api")
 
@@ -294,88 +295,14 @@ async def rename_session(session_id: str, body: dict[str, str], user: AuthUser =
 
 
 # ---------------------------------------------------------------------------
-# Title generation helper
-# ---------------------------------------------------------------------------
-
-
-async def _generate_title(message: str) -> str:
-    response = router_llm.generate_response(
-        messages=[
-            SystemMessage(content=TITLE_PROMPT),
-            HumanMessage(content=message),
-        ]
-    )
-    return response.strip()
-
-
-# ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest, user: AuthUser = Depends(get_current_user)) -> ChatResponse:
-    if not body.channel_id:
-        raise HTTPException(status_code=400, detail="Please specify channel_id in your request.")
-    await require_channel_view(body.channel_id, user)
-
-    # Resolve or create session
-    session_id = body.session_id
-    if not session_id:
-        session = await sessions_store.create_session(body.channel_id)
-        session_id = session["id"]
-
-    # Load prior messages to build context
-    prior_messages = await sessions_store.get_messages(session_id) if session_id else []
-    context_messages = [body.message]
-
-    state: dict = {
-        "messages": context_messages,
-        "channel_id": body.channel_id,
-        "intents": [],
-        "report_segment": None,
-        "question_segment": None,
-        "extracted_chunks": None,
-        "retrieved_docs": None,
-        "store_response": None,
-        "answer_response": None,
-        "response": None,
-    }
-
-    router_result = await router_node_async(state)
-    state.update(router_result)
-
-    if state.get("decision") == "save_memory":
-        role = await get_effective_role(body.channel_id, user)
-        if role not in _WRITE_ROLES:
-            raise HTTPException(status_code=403, detail="Write access required to save progress reports.")
-        extractor_result = await extractor_node_async(state)
-        state.update(extractor_result)
-        store_result = await store_node_async(state)
-        state.update(store_result)
-    else:
-        retriever_result = await retriever_node_async(state)
-        state.update(retriever_result)
-        answer_result = await answer_node_async(state)
-        state.update(answer_result)
-
-    agent_response: str = state.get("response", "")
-
-    # Persist messages
-    await sessions_store.add_message(session_id, "user", body.message)
-    await sessions_store.add_message(session_id, "assistant", agent_response)
-
-    # Generate title on first complete exchange (no prior messages means this is the first turn)
-    title_updated = False
-    if not prior_messages:
-        try:
-            title = await _generate_title(body.message)
-            await sessions_store.update_title(session_id, title)
-            title_updated = True
-        except Exception:
-            pass  # title generation is best-effort
-
-    return ChatResponse(response=agent_response, session_id=session_id, title_updated=title_updated)
+    result = await run_chat_turn(body.channel_id, body.session_id, body.message, user)
+    return ChatResponse(**result)
 
 
 # ---------------------------------------------------------------------------
@@ -598,27 +525,9 @@ async def import_embedded_json(
 
     raw_bytes = await file.read()
     try:
-        data = json.loads(raw_bytes)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
-
-    if not isinstance(data, dict) or "chunks" not in data:
-        raise HTTPException(
-            status_code=422,
-            detail="JSON must have a top-level 'chunks' array.",
-        )
-    chunks = data["chunks"]
-    if not isinstance(chunks, list):
-        raise HTTPException(status_code=422, detail="'chunks' must be an array.")
-    for i, chunk in enumerate(chunks):
-        if "chunk_id" not in chunk or "chunk_text_embedded" not in chunk:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Chunk at index {i} is missing 'chunk_id' or 'chunk_text_embedded'.",
-            )
-
-    result = vector_store.import_chunks(channel_id=channel_id, chunks=chunks)
-    return result
+        return import_embedded_json_bytes(channel_id, raw_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/channels/{channel_id}/import/documents")
@@ -628,78 +537,20 @@ async def import_documents(
     _: AuthUser = Depends(require_channel_write),
 ) -> dict[str, Any]:
     """Upload multiple documents for indexing and save to channel memory."""
-    indexer_client = IndexerClient()
-
     imported_count = 0
     skipped_count = 0
     failed_files = []
 
-    import tempfile
-    import os
-
-    # Document processing extensions
-    _DOCLING_EXTENSIONS = {'.pdf', '.docx', '.doc', '.odt', '.rtf', '.html', '.htm'}
-    _EXCEL_EXTENSIONS = {'.xlsx', '.xls'}
-    _CSV_EXTENSIONS = {'.csv'}
-    _PPTX_EXTENSIONS = {'.pptx', '.ppt'}
-    _JSON_EXTENSIONS = {'.json'}
-    _IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp'}
-    _PASSTHROUGH_EXTENSIONS = {'.md', '.txt'}
-
-    _SUPPORTED_EXTENSIONS = (
-        _DOCLING_EXTENSIONS | _EXCEL_EXTENSIONS | _CSV_EXTENSIONS |
-        _PPTX_EXTENSIONS | _JSON_EXTENSIONS | _IMAGE_EXTENSIONS | _PASSTHROUGH_EXTENSIONS
-    )
-
     for file in files:
         if not file.filename:
             continue
-
-        # Check file extension
-        file_ext = os.path.splitext(file.filename)[1].lower()
-        if file_ext not in _SUPPORTED_EXTENSIONS:
-            failed_files.append({"file": file.filename, "error": f"Unsupported file type: {file_ext}"})
-            continue
-
-        # Create a temporary file to store the uploaded document
-        # Use the full filename to preserve folder structure and avoid collisions
-        # For webkitdirectory uploads, file.filename contains the relative path
-        safe_filename = re.sub(r'[^\w\-_\. ]', '_', file.filename)
-        tmp_file_path = os.path.join(tempfile.gettempdir(), safe_filename)
-
-        # Ensure the directory structure exists in temp dir
-        tmp_dir = os.path.dirname(tmp_file_path)
-        if tmp_dir and tmp_dir != tempfile.gettempdir() and not os.path.exists(tmp_dir):
-            os.makedirs(tmp_dir, exist_ok=True)
-
-        # Remove if exists to ensure a clean write
-        if os.path.exists(tmp_file_path):
-            os.remove(tmp_file_path)
-
-        with open(tmp_file_path, 'wb') as tmp_file:
-            content = await file.read()
-            tmp_file.write(content)
-
+        content = await file.read()
         try:
-            # Process document through indexer
-            chunks_data = indexer_client.process_document(tmp_file_path)
-
-            # Import chunks to the vector store
-            if "chunks" in chunks_data and isinstance(chunks_data["chunks"], list):
-                result = vector_store.import_chunks(channel_id=channel_id, chunks=chunks_data["chunks"])
-                imported_count += result.get("imported", 0)
-                skipped_count += result.get("skipped", 0)
-            else:
-                raise Exception("No chunks found in indexer response")
-
+            result = import_document_bytes(channel_id, file.filename, content)
+            imported_count += result.get("imported", 0)
+            skipped_count += result.get("skipped", 0)
         except Exception as e:
             failed_files.append({"file": file.filename, "error": str(e)})
-        finally:
-            # Clean up temporary file
-            if os.path.exists(tmp_file_path):
-                os.remove(tmp_file_path)
-
-    indexer_client.close()
 
     return {
         "imported": imported_count,

@@ -21,6 +21,7 @@ dependencies = [
     "pylance>=10.0.0",
     "rank-bm25",
     "PyJWT",
+    "mcp",
 ]
 
 [tool.poe.tasks]

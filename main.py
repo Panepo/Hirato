@@ -10,10 +10,13 @@ from app.api.routes import router
 from app.bot.bot import build_application, start_bot, stop_bot
 from app.bot.telegram_sessions import telegram_session_manager
 from app.core.config import settings
+from app.mcp.server import mcp
 from app.memory.auth_store import auth_store
 from app.memory.sessions import sessions_store
 
 FRONTEND_DIST = Path(__file__).parent / "static"
+
+mcp_app = mcp.streamable_http_app(json_response=True, streamable_http_path="/")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +30,10 @@ async def lifespan(app: FastAPI):
         telegram_app = build_application(settings.TELEGRAM_BOT_TOKEN)
         await start_bot(telegram_app)
 
-    yield
+    # The MCP sub-app is only mounted (not include_router'd), so its own lifespan never
+    # runs unless we explicitly enter its session manager here.
+    async with mcp.session_manager.run():
+        yield
 
     if telegram_app is not None:
         await stop_bot(telegram_app)
@@ -40,10 +46,12 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Mcp-Session-Id"],
 )
 
 app.include_router(router)
 app.include_router(auth_router)
+app.mount("/mcp", mcp_app)
 
 
 @app.get("/{full_path:path}", include_in_schema=False)

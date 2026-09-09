@@ -112,3 +112,32 @@ async def require_channel_creator(user: AuthUser = Depends(get_current_user)) ->
     if not is_site_admin(user) and not is_site_manager(user):
         raise HTTPException(status_code=403, detail="Site admin or site manager access required")
     return user
+
+
+async def perform_login(email: str, password: str) -> tuple[dict, AuthUser]:
+    """Log in against Shiratsuyu, upsert the local user cache, and return (raw_result, AuthUser).
+
+    The raw dict is Shiratsuyu's original response body (REST callers return it as-is);
+    the AuthUser is the normalized shape MCP tools and get_current_user() work with.
+    """
+    result = await shiratsuyu_login(email, password)
+
+    # Shiratsuyu's exact response shape is unconfirmed; support both a nested
+    # "user" object and flat top-level fields until verified against the real API.
+    user_data = result.get("user", result)
+    user_id = str(user_data.get("id") or user_data.get("_id") or user_data.get("sub"))
+    name = user_data.get("name", "")
+    usergroups = user_data.get("usergroups", [])
+    nested_data = user_data.get("data") or {}
+    # /auth/GET-user-by-id omit empno; it only lives on the UserData record behind userDataId.
+    empno = ""
+    user_data_id = user_data.get("userDataId") or nested_data.get("userDataId")
+    if user_data_id:
+        records = await shiratsuyu_get_user_data(user_data_id)
+        if records:
+            empno = records[0].get("empno") or ""
+    if not empno:
+        empno = user_data.get("empno") or nested_data.get("empno") or ""
+
+    await auth_store.upsert_user(user_id, name, usergroups, empno)
+    return result, AuthUser(id=user_id, name=name, usergroups=usergroups, empno=empno)
