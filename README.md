@@ -109,6 +109,19 @@ uvicorn main:app --port 7950 --reload
 
 Then open [http://localhost:7950](http://localhost:7950) in your browser.
 
+### Reverse-proxy deployment
+
+When nginx strips the `/hirato/` prefix before forwarding requests, set
+`ROOT_PATH=/hirato` and start with `python main.py`. The Docker image uses this
+entry point so Uvicorn and FastAPI share the same configured root path and port.
+If launching Uvicorn directly, also pass `--root-path /hirato`.
+
+The MCP endpoint is `https://swai.getac.com.tw/hirato/mcp/`. nginx should forward
+the original Host header; the MCP transport explicitly allows this public host
+and HTTPS origin while retaining DNS-rebinding protection and loopback access
+for local clients. Other deployment domains must be added to the transport
+allowlists in `main.py`.
+
 ## API Endpoints
 
 VISION_CHAT_MODEL=''

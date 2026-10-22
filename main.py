@@ -5,6 +5,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from mcp.server.transport_security import TransportSecuritySettings
 
 from app.api.auth_routes import router as auth_router
 from app.api.routes import router
@@ -17,7 +18,20 @@ from app.memory.sessions import sessions_store
 
 FRONTEND_DIST = Path(__file__).parent / "static"
 
-mcp_app = mcp.streamable_http_app(json_response=True, streamable_http_path="/")
+mcp_app = mcp.streamable_http_app(
+    json_response=True,
+    streamable_http_path="/",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["swai.getac.com.tw", "127.0.0.1:*", "localhost:*", "[::1]:*"],
+        allowed_origins=[
+            "https://swai.getac.com.tw",
+            "http://127.0.0.1:*",
+            "http://localhost:*",
+            "http://[::1]:*",
+        ],
+    ),
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -69,5 +83,4 @@ async def serve_frontend(full_path: str) -> FileResponse:
 
 if __name__ == "__main__":
     import uvicorn
-    from app.core.config import settings
     uvicorn.run("main:app", host="0.0.0.0", port=settings.PORT, root_path=settings.ROOT_PATH)

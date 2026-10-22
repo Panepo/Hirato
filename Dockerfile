@@ -31,4 +31,4 @@ VOLUME ["/app/lancedb_db", "/app/data"]
 
 EXPOSE 7950
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7950"]
+CMD ["python", "main.py"]
